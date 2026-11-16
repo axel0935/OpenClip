@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "openclip"
+version = "0.1.0"
+description = "Local-first long-video clipper"
+readme = { text = "OpenClip is a local-first long-video clipper.", content-type = "text/markdown" }
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "axel0935", email = "axel.llm54@gmail.com" }]
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.34.0",
+  "pydantic>=2.10.0",
+  "pydantic-settings>=2.7.0",
+  "sqlmodel>=0.0.22",
+  "typer>=0.15.0",
+  "platformdirs>=4.3.0",
+  "httpx>=0.28.0",
+]
+
+[project.scripts]
+openclip = "openclip.cli.main:app"
+
+[project.optional-dependencies]
+asr = []
+vision = []
+llm = []
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3.0",
+  "ruff>=0.9.0",
+  "pyright>=1.1.392",
+  "pre-commit>=4.1.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/openclip"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+include = ["src", "tests"]
