@@ -1,6 +1,20 @@
 {
   "components": {
     "schemas": {
+      "Body_create_upload_api_uploads_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_create_upload_api_uploads_post",
+        "type": "object"
+      },
       "Candidate": {
         "$defs": {
           "CandidateFeatures": {
@@ -1283,7 +1297,7 @@
   "paths": {
     "/api/caption-styles": {
       "get": {
-        "description": "List available caption styles when presets are implemented.",
+        "description": "List available caption style presets.",
         "operationId": "list_caption_styles_api_caption_styles_get",
         "responses": {
           "200": {
@@ -1299,16 +1313,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not implemented yet."
           }
         },
         "summary": "List Caption Styles",
@@ -1319,7 +1323,7 @@
     },
     "/api/jobs": {
       "get": {
-        "description": "List saved pipeline jobs when persistence is implemented.",
+        "description": "List all jobs, newest first.",
         "operationId": "list_jobs_api_jobs_get",
         "responses": {
           "200": {
@@ -1335,16 +1339,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not implemented yet."
           }
         },
         "summary": "List Jobs",
@@ -1353,7 +1347,7 @@
         ]
       },
       "post": {
-        "description": "Create a pipeline job when persistence is implemented.",
+        "description": "Create and enqueue a clipping job.",
         "operationId": "create_job_api_jobs_post",
         "requestBody": {
           "content": {
@@ -1385,16 +1379,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not implemented yet."
           }
         },
         "summary": "Create Job",
@@ -1405,7 +1389,7 @@
     },
     "/api/jobs/{job_id}": {
       "delete": {
-        "description": "Cancel or delete a job when persistence is implemented.",
+        "description": "Cancel a running job and delete its files.",
         "operationId": "delete_job_api_jobs__job_id__delete",
         "parameters": [
           {
@@ -1431,16 +1415,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not implemented yet."
           }
         },
         "summary": "Delete Job",
@@ -1449,7 +1423,7 @@
         ]
       },
       "get": {
-        "description": "Retrieve a job by identifier when persistence is implemented.",
+        "description": "Retrieve a job by id.",
         "operationId": "get_job_api_jobs__job_id__get",
         "parameters": [
           {
@@ -1482,16 +1456,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not implemented yet."
           }
         },
         "summary": "Get Job",
@@ -1502,7 +1466,7 @@
     },
     "/api/jobs/{job_id}/clips/{clip_id}": {
       "patch": {
-        "description": "Edit a clip selection when job editing is implemented.",
+        "description": "Trim a clip and/or change its caption style; re-renders in background.",
         "operationId": "update_clip_api_jobs__job_id__clips__clip_id__patch",
         "parameters": [
           {
@@ -1554,16 +1518,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not implemented yet."
           }
         },
         "summary": "Update Clip",
@@ -1574,7 +1528,7 @@
     },
     "/api/jobs/{job_id}/clips/{clip_id}/captions.ass": {
       "get": {
-        "description": "Serve generated ASS captions when captions are implemented.",
+        "description": "Serve the generated ASS subtitle file.",
         "operationId": "clip_captions_api_jobs__job_id__clips__clip_id__captions_ass_get",
         "parameters": [
           {
@@ -1601,8 +1555,7 @@
             "content": {
               "application/json": {
                 "schema": {}
-              },
-              "text/plain": {}
+              }
             },
             "description": "Successful Response"
           },
@@ -1615,16 +1568,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not implemented yet."
           }
         },
         "summary": "Clip Captions",
@@ -1635,7 +1578,7 @@
     },
     "/api/jobs/{job_id}/clips/{clip_id}/preview": {
       "get": {
-        "description": "Serve a captionless preview proxy when rendering is implemented.",
+        "description": "Serve the captionless proxy preview.",
         "operationId": "clip_preview_api_jobs__job_id__clips__clip_id__preview_get",
         "parameters": [
           {
@@ -1662,8 +1605,7 @@
             "content": {
               "application/json": {
                 "schema": {}
-              },
-              "video/mp4": {}
+              }
             },
             "description": "Successful Response"
           },
@@ -1676,16 +1618,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not implemented yet."
           }
         },
         "summary": "Clip Preview",
@@ -1696,7 +1628,7 @@
     },
     "/api/jobs/{job_id}/clips/{clip_id}/thumbnail": {
       "get": {
-        "description": "Serve a JPEG thumbnail when rendering is implemented.",
+        "description": "Serve the JPEG thumbnail.",
         "operationId": "clip_thumbnail_api_jobs__job_id__clips__clip_id__thumbnail_get",
         "parameters": [
           {
@@ -1723,8 +1655,7 @@
             "content": {
               "application/json": {
                 "schema": {}
-              },
-              "image/jpeg": {}
+              }
             },
             "description": "Successful Response"
           },
@@ -1737,16 +1668,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not implemented yet."
           }
         },
         "summary": "Clip Thumbnail",
@@ -1757,7 +1678,7 @@
     },
     "/api/jobs/{job_id}/clips/{clip_id}/video": {
       "get": {
-        "description": "Serve a rendered MP4 when rendering is implemented.",
+        "description": "Serve the rendered MP4 with Range support.",
         "operationId": "clip_video_api_jobs__job_id__clips__clip_id__video_get",
         "parameters": [
           {
@@ -1784,8 +1705,7 @@
             "content": {
               "application/json": {
                 "schema": {}
-              },
-              "video/mp4": {}
+              }
             },
             "description": "Successful Response"
           },
@@ -1798,16 +1718,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not implemented yet."
           }
         },
         "summary": "Clip Video",
@@ -1818,7 +1728,7 @@
     },
     "/api/jobs/{job_id}/download.zip": {
       "get": {
-        "description": "Serve a job archive when export is implemented.",
+        "description": "Stream a ZIP of all rendered clips, thumbnails and captions.",
         "operationId": "download_job_api_jobs__job_id__download_zip_get",
         "parameters": [
           {
@@ -1836,8 +1746,7 @@
             "content": {
               "application/json": {
                 "schema": {}
-              },
-              "application/zip": {}
+              }
             },
             "description": "Successful Response"
           },
@@ -1850,16 +1759,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not implemented yet."
           }
         },
         "summary": "Download Job",
@@ -1870,7 +1769,7 @@
     },
     "/api/jobs/{job_id}/events": {
       "get": {
-        "description": "Stream job progress events when orchestration is implemented.",
+        "description": "Server-sent events stream for job progress.",
         "operationId": "job_events_api_jobs__job_id__events_get",
         "parameters": [
           {
@@ -1885,8 +1784,47 @@
         ],
         "responses": {
           "200": {
+            "description": "Successful Response"
+          },
+          "422": {
             "content": {
-              "text/event-stream": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Job Events",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/uploads": {
+      "post": {
+        "description": "Stream an uploaded file to disk under the data dir.",
+        "operationId": "create_upload_api_uploads_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_upload_api_uploads_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadResponse"
+                }
+              }
             },
             "description": "Successful Response"
           },
@@ -1899,48 +1837,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not implemented yet."
-          }
-        },
-        "summary": "Job Events",
-        "tags": [
-          "jobs"
-        ]
-      }
-    },
-    "/api/uploads": {
-      "post": {
-        "description": "Accept a local upload when ingestion is implemented.",
-        "operationId": "create_upload_api_uploads_post",
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UploadResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not implemented yet."
           }
         },
         "summary": "Create Upload",

@@ -13,7 +13,7 @@ export interface paths {
         };
         /**
          * List Caption Styles
-         * @description List available caption styles when presets are implemented.
+         * @description List available caption style presets.
          */
         get: operations["list_caption_styles_api_caption_styles_get"];
         put?: never;
@@ -33,13 +33,13 @@ export interface paths {
         };
         /**
          * List Jobs
-         * @description List saved pipeline jobs when persistence is implemented.
+         * @description List all jobs, newest first.
          */
         get: operations["list_jobs_api_jobs_get"];
         put?: never;
         /**
          * Create Job
-         * @description Create a pipeline job when persistence is implemented.
+         * @description Create and enqueue a clipping job.
          */
         post: operations["create_job_api_jobs_post"];
         delete?: never;
@@ -57,14 +57,14 @@ export interface paths {
         };
         /**
          * Get Job
-         * @description Retrieve a job by identifier when persistence is implemented.
+         * @description Retrieve a job by id.
          */
         get: operations["get_job_api_jobs__job_id__get"];
         put?: never;
         post?: never;
         /**
          * Delete Job
-         * @description Cancel or delete a job when persistence is implemented.
+         * @description Cancel a running job and delete its files.
          */
         delete: operations["delete_job_api_jobs__job_id__delete"];
         options?: never;
@@ -87,7 +87,7 @@ export interface paths {
         head?: never;
         /**
          * Update Clip
-         * @description Edit a clip selection when job editing is implemented.
+         * @description Trim a clip and/or change its caption style; re-renders in background.
          */
         patch: operations["update_clip_api_jobs__job_id__clips__clip_id__patch"];
         trace?: never;
@@ -101,7 +101,7 @@ export interface paths {
         };
         /**
          * Clip Captions
-         * @description Serve generated ASS captions when captions are implemented.
+         * @description Serve the generated ASS subtitle file.
          */
         get: operations["clip_captions_api_jobs__job_id__clips__clip_id__captions_ass_get"];
         put?: never;
@@ -121,7 +121,7 @@ export interface paths {
         };
         /**
          * Clip Preview
-         * @description Serve a captionless preview proxy when rendering is implemented.
+         * @description Serve the captionless proxy preview.
          */
         get: operations["clip_preview_api_jobs__job_id__clips__clip_id__preview_get"];
         put?: never;
@@ -141,7 +141,7 @@ export interface paths {
         };
         /**
          * Clip Thumbnail
-         * @description Serve a JPEG thumbnail when rendering is implemented.
+         * @description Serve the JPEG thumbnail.
          */
         get: operations["clip_thumbnail_api_jobs__job_id__clips__clip_id__thumbnail_get"];
         put?: never;
@@ -161,7 +161,7 @@ export interface paths {
         };
         /**
          * Clip Video
-         * @description Serve a rendered MP4 when rendering is implemented.
+         * @description Serve the rendered MP4 with Range support.
          */
         get: operations["clip_video_api_jobs__job_id__clips__clip_id__video_get"];
         put?: never;
@@ -181,7 +181,7 @@ export interface paths {
         };
         /**
          * Download Job
-         * @description Serve a job archive when export is implemented.
+         * @description Stream a ZIP of all rendered clips, thumbnails and captions.
          */
         get: operations["download_job_api_jobs__job_id__download_zip_get"];
         put?: never;
@@ -201,7 +201,7 @@ export interface paths {
         };
         /**
          * Job Events
-         * @description Stream job progress events when orchestration is implemented.
+         * @description Server-sent events stream for job progress.
          */
         get: operations["job_events_api_jobs__job_id__events_get"];
         put?: never;
@@ -223,7 +223,7 @@ export interface paths {
         put?: never;
         /**
          * Create Upload
-         * @description Accept a local upload when ingestion is implemented.
+         * @description Stream an uploaded file to disk under the data dir.
          */
         post: operations["create_upload_api_uploads_post"];
         delete?: never;
@@ -256,6 +256,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Body_create_upload_api_uploads_post */
+        Body_create_upload_api_uploads_post: {
+            /** File */
+            file: string;
+        };
         /**
          * Candidate
          * @description An analyzable source interval before final clip selection.
@@ -818,15 +823,6 @@ export interface operations {
                     "application/json": components["schemas"]["CaptionStyle"][];
                 };
             };
-            /** @description Not implemented yet. */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
         };
     };
     list_jobs_api_jobs_get: {
@@ -845,15 +841,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Job"][];
-                };
-            };
-            /** @description Not implemented yet. */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -889,15 +876,6 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Not implemented yet. */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
         };
     };
     get_job_api_jobs__job_id__get: {
@@ -929,15 +907,6 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Not implemented yet. */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
         };
     };
     delete_job_api_jobs__job_id__delete: {
@@ -965,15 +934,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Not implemented yet. */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1012,15 +972,6 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Not implemented yet. */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
         };
     };
     clip_captions_api_jobs__job_id__clips__clip_id__captions_ass_get: {
@@ -1042,7 +993,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                    "text/plain": unknown;
                 };
             };
             /** @description Validation Error */
@@ -1052,15 +1002,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Not implemented yet. */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1084,7 +1025,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                    "video/mp4": unknown;
                 };
             };
             /** @description Validation Error */
@@ -1094,15 +1034,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Not implemented yet. */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1126,7 +1057,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                    "image/jpeg": unknown;
                 };
             };
             /** @description Validation Error */
@@ -1136,15 +1066,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Not implemented yet. */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1168,7 +1089,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                    "video/mp4": unknown;
                 };
             };
             /** @description Validation Error */
@@ -1178,15 +1098,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Not implemented yet. */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1209,7 +1120,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                    "application/zip": unknown;
                 };
             };
             /** @description Validation Error */
@@ -1219,15 +1129,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Not implemented yet. */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1248,9 +1149,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "text/event-stream": unknown;
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -1259,15 +1158,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Not implemented yet. */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1279,7 +1169,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_create_upload_api_uploads_post"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             201: {
@@ -1290,13 +1184,13 @@ export interface operations {
                     "application/json": components["schemas"]["UploadResponse"];
                 };
             };
-            /** @description Not implemented yet. */
-            501: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -14,27 +14,21 @@ def test_health() -> None:
     assert response.json()["status"] == "ok"
 
 
-def test_stub_routes_return_standard_error() -> None:
-    """Every declared future endpoint consistently reports the scaffold state."""
-    requests = [
-        ("get", "/api/caption-styles", {}),
-        ("post", "/api/uploads", {}),
-        ("post", "/api/jobs", {"json": {"source": {"type": "upload", "value": "u1"}}}),
-        ("get", "/api/jobs", {}),
-        ("get", "/api/jobs/job-1", {}),
-        ("delete", "/api/jobs/job-1", {}),
-        ("get", "/api/jobs/job-1/events", {}),
-        ("patch", "/api/jobs/job-1/clips/clip-1", {"json": {"start": 1, "end": 2}}),
-        ("get", "/api/jobs/job-1/clips/clip-1/video", {}),
-        ("get", "/api/jobs/job-1/clips/clip-1/thumbnail", {}),
-        ("get", "/api/jobs/job-1/clips/clip-1/preview", {}),
-        ("get", "/api/jobs/job-1/clips/clip-1/captions.ass", {}),
-        ("get", "/api/jobs/job-1/download.zip", {}),
-    ]
-    for method, path, kwargs in requests:
-        response = getattr(client, method)(path, **kwargs)
-        assert response.status_code == 501
-        assert response.json() == {"code": "not_implemented", "message": "not implemented yet"}
+def test_real_endpoints_behave() -> None:
+    """Implemented endpoints return real responses or contract errors."""
+    # caption styles are real data
+    response = client.get("/api/caption-styles")
+    assert response.status_code == 200 and isinstance(response.json(), list)
+    # unknown job id -> contract error shape
+    response = client.get("/api/jobs/" + "0" * 32)
+    assert response.status_code == 404
+    assert set(response.json()) == {"code", "message"}
+    # invalid clip/job paths -> 404, not 501
+    response = client.get("/api/jobs/" + "0" * 32 + "/clips/c1/video")
+    assert response.status_code == 404
+    # jobs list works
+    response = client.get("/api/jobs")
+    assert response.status_code == 200 and isinstance(response.json(), list)
 
 
 def test_openapi_contains_every_contract_model() -> None:
