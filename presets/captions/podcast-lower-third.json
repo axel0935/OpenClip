@@ -1,0 +1,28 @@
+{
+  "id": "podcast-lower-third",
+  "name": "Podcast Lower Third",
+  "description": "Oswald over two lines on a semi-transparent dark plate, like broadcast chyrons. Long quotes stay legible.",
+  "font_family": "Oswald",
+  "bold": true,
+  "italic": false,
+  "font_size": 62,
+  "uppercase": false,
+  "letter_spacing": 0.5,
+  "text_color": "#FFFFFF",
+  "highlight_color": "#FFC857",
+  "outline_color": "#0B0C0E",
+  "outline_width": 0,
+  "shadow_color": null,
+  "shadow_offset": 0,
+  "background": {
+    "color": "#0B0C0ECC",
+    "padding": 32,
+    "radius": 18
+  },
+  "highlight_mode": "word_color",
+  "animation": "slide_up",
+  "words_per_caption": 6,
+  "max_lines": 2,
+  "position": "bottom",
+  "margin_v": 240
+}
