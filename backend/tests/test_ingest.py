@@ -117,7 +117,7 @@ def test_ingest_no_audio_video(tmp_path: Path, ffmpeg_ok: None) -> None:
     assert getattr(excinfo.value, "code", None) == "no_audio"
 
 
-def test_ingest_corrupt_file(tmp_path: Path) -> None:
+def test_ingest_corrupt_file(tmp_path: Path, ffmpeg_ok: None) -> None:
     """A corrupt file fails with the unsupported_file code."""
     source = make_corrupt_media(tmp_path / "broken.mp4")
     with pytest.raises(IngestError) as excinfo:
