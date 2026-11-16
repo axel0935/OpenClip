@@ -1,0 +1,1978 @@
+{
+  "components": {
+    "schemas": {
+      "Candidate": {
+        "$defs": {
+          "CandidateFeatures": {
+            "description": "Objective signals used to rank a candidate moment.",
+            "properties": {
+              "audio_energy": {
+                "maximum": 1,
+                "minimum": 0,
+                "title": "Audio Energy",
+                "type": "number"
+              },
+              "hook_score": {
+                "maximum": 1,
+                "minimum": 0,
+                "title": "Hook Score",
+                "type": "number"
+              },
+              "question_count": {
+                "minimum": 0,
+                "title": "Question Count",
+                "type": "integer"
+              },
+              "scene_changes": {
+                "minimum": 0,
+                "title": "Scene Changes",
+                "type": "integer"
+              },
+              "speech_rate_wps": {
+                "minimum": 0,
+                "title": "Speech Rate Wps",
+                "type": "number"
+              }
+            },
+            "required": [
+              "speech_rate_wps",
+              "audio_energy",
+              "question_count",
+              "scene_changes",
+              "hook_score"
+            ],
+            "title": "CandidateFeatures",
+            "type": "object"
+          }
+        },
+        "description": "An analyzable source interval before final clip selection.",
+        "properties": {
+          "end": {
+            "minimum": 0,
+            "title": "End",
+            "type": "number"
+          },
+          "features": {
+            "$ref": "#/components/schemas/CandidateFeatures"
+          },
+          "heuristic_score": {
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Heuristic Score",
+            "type": "number"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "start": {
+            "minimum": 0,
+            "title": "Start",
+            "type": "number"
+          },
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "start",
+          "end",
+          "text",
+          "features",
+          "heuristic_score"
+        ],
+        "title": "Candidate",
+        "type": "object"
+      },
+      "CandidateFeatures": {
+        "description": "Objective signals used to rank a candidate moment.",
+        "properties": {
+          "audio_energy": {
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Audio Energy",
+            "type": "number"
+          },
+          "hook_score": {
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Hook Score",
+            "type": "number"
+          },
+          "question_count": {
+            "minimum": 0,
+            "title": "Question Count",
+            "type": "integer"
+          },
+          "scene_changes": {
+            "minimum": 0,
+            "title": "Scene Changes",
+            "type": "integer"
+          },
+          "speech_rate_wps": {
+            "minimum": 0,
+            "title": "Speech Rate Wps",
+            "type": "number"
+          }
+        },
+        "required": [
+          "speech_rate_wps",
+          "audio_energy",
+          "question_count",
+          "scene_changes",
+          "hook_score"
+        ],
+        "title": "CandidateFeatures",
+        "type": "object"
+      },
+      "CaptionBackground": {
+        "description": "Optional background plate behind captions.",
+        "properties": {
+          "color": {
+            "examples": [
+              "#FFFFFF"
+            ],
+            "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$",
+            "title": "Color",
+            "type": "string"
+          },
+          "padding": {
+            "minimum": 0.0,
+            "title": "Padding",
+            "type": "integer"
+          },
+          "radius": {
+            "minimum": 0.0,
+            "title": "Radius",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "color",
+          "padding",
+          "radius"
+        ],
+        "title": "CaptionBackground",
+        "type": "object"
+      },
+      "CaptionStyle": {
+        "description": "Serializable visual preset for ASS caption rendering.",
+        "properties": {
+          "animation": {
+            "enum": [
+              "none",
+              "pop",
+              "fade",
+              "slide_up",
+              "bounce"
+            ],
+            "title": "Animation",
+            "type": "string"
+          },
+          "background": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CaptionBackground"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bold": {
+            "title": "Bold",
+            "type": "boolean"
+          },
+          "description": {
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "font_family": {
+            "minLength": 1,
+            "title": "Font Family",
+            "type": "string"
+          },
+          "font_size": {
+            "exclusiveMinimum": 0.0,
+            "title": "Font Size",
+            "type": "integer"
+          },
+          "highlight_color": {
+            "examples": [
+              "#FFFFFF"
+            ],
+            "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$",
+            "title": "Highlight Color",
+            "type": "string"
+          },
+          "highlight_mode": {
+            "enum": [
+              "none",
+              "word_color",
+              "word_box",
+              "karaoke_fill"
+            ],
+            "title": "Highlight Mode",
+            "type": "string"
+          },
+          "id": {
+            "examples": [
+              "clean-pop"
+            ],
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "title": "Id",
+            "type": "string"
+          },
+          "italic": {
+            "default": false,
+            "title": "Italic",
+            "type": "boolean"
+          },
+          "letter_spacing": {
+            "default": 0,
+            "title": "Letter Spacing",
+            "type": "number"
+          },
+          "margin_v": {
+            "minimum": 0.0,
+            "title": "Margin V",
+            "type": "integer"
+          },
+          "max_lines": {
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Max Lines",
+            "type": "integer"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "outline_color": {
+            "examples": [
+              "#FFFFFF"
+            ],
+            "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$",
+            "title": "Outline Color",
+            "type": "string"
+          },
+          "outline_width": {
+            "minimum": 0.0,
+            "title": "Outline Width",
+            "type": "number"
+          },
+          "position": {
+            "enum": [
+              "top",
+              "middle",
+              "bottom"
+            ],
+            "title": "Position",
+            "type": "string"
+          },
+          "shadow_color": {
+            "anyOf": [
+              {
+                "examples": [
+                  "#FFFFFF"
+                ],
+                "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shadow Color"
+          },
+          "shadow_offset": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Shadow Offset",
+            "type": "number"
+          },
+          "text_color": {
+            "examples": [
+              "#FFFFFF"
+            ],
+            "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$",
+            "title": "Text Color",
+            "type": "string"
+          },
+          "uppercase": {
+            "title": "Uppercase",
+            "type": "boolean"
+          },
+          "words_per_caption": {
+            "maximum": 6.0,
+            "minimum": 1.0,
+            "title": "Words Per Caption",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "font_family",
+          "bold",
+          "font_size",
+          "uppercase",
+          "text_color",
+          "highlight_color",
+          "outline_color",
+          "outline_width",
+          "highlight_mode",
+          "animation",
+          "words_per_caption",
+          "max_lines",
+          "position",
+          "margin_v"
+        ],
+        "title": "CaptionStyle",
+        "type": "object"
+      },
+      "Clip": {
+        "description": "A selected output clip and its editorial metadata.",
+        "properties": {
+          "end": {
+            "minimum": 0.0,
+            "title": "End",
+            "type": "number"
+          },
+          "hashtags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hashtags",
+            "type": "array"
+          },
+          "hook": {
+            "minLength": 1,
+            "title": "Hook",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "output_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output File"
+          },
+          "rationale": {
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "score": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ClipSource"
+          },
+          "start": {
+            "minimum": 0.0,
+            "title": "Start",
+            "type": "number"
+          },
+          "thumbnail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "start",
+          "end",
+          "score",
+          "title",
+          "hook",
+          "rationale",
+          "source"
+        ],
+        "title": "Clip",
+        "type": "object"
+      },
+      "ClipSource": {
+        "description": "The ranking mechanism that selected a clip.",
+        "enum": [
+          "llm",
+          "heuristic"
+        ],
+        "title": "ClipSource",
+        "type": "string"
+      },
+      "ClipUpdate": {
+        "additionalProperties": false,
+        "description": "Optional timing and caption-preset changes for a selected clip.",
+        "properties": {
+          "caption_style_id": {
+            "anyOf": [
+              {
+                "examples": [
+                  "clean-pop"
+                ],
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption Style Id"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          }
+        },
+        "title": "ClipUpdate",
+        "type": "object"
+      },
+      "CropKeyframe": {
+        "description": "One source-pixel crop rectangle at a clip-relative timestamp.",
+        "properties": {
+          "h": {
+            "exclusiveMinimum": 0,
+            "title": "H",
+            "type": "integer"
+          },
+          "t": {
+            "minimum": 0,
+            "title": "T",
+            "type": "number"
+          },
+          "w": {
+            "exclusiveMinimum": 0,
+            "title": "W",
+            "type": "integer"
+          },
+          "x": {
+            "minimum": 0,
+            "title": "X",
+            "type": "integer"
+          },
+          "y": {
+            "minimum": 0,
+            "title": "Y",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "t",
+          "x",
+          "y",
+          "w",
+          "h"
+        ],
+        "title": "CropKeyframe",
+        "type": "object"
+      },
+      "CropPath": {
+        "$defs": {
+          "CropKeyframe": {
+            "description": "One source-pixel crop rectangle at a clip-relative timestamp.",
+            "properties": {
+              "h": {
+                "exclusiveMinimum": 0,
+                "title": "H",
+                "type": "integer"
+              },
+              "t": {
+                "minimum": 0,
+                "title": "T",
+                "type": "number"
+              },
+              "w": {
+                "exclusiveMinimum": 0,
+                "title": "W",
+                "type": "integer"
+              },
+              "x": {
+                "minimum": 0,
+                "title": "X",
+                "type": "integer"
+              },
+              "y": {
+                "minimum": 0,
+                "title": "Y",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "t",
+              "x",
+              "y",
+              "w",
+              "h"
+            ],
+            "title": "CropKeyframe",
+            "type": "object"
+          }
+        },
+        "description": "A vertical crop trajectory for one output clip.",
+        "properties": {
+          "keyframes": {
+            "items": {
+              "$ref": "#/components/schemas/CropKeyframe"
+            },
+            "minItems": 1,
+            "title": "Keyframes",
+            "type": "array"
+          },
+          "layout": {
+            "enum": [
+              "fill",
+              "fit"
+            ],
+            "title": "Layout",
+            "type": "string"
+          },
+          "source_height": {
+            "exclusiveMinimum": 0,
+            "title": "Source Height",
+            "type": "integer"
+          },
+          "source_width": {
+            "exclusiveMinimum": 0,
+            "title": "Source Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "layout",
+          "source_width",
+          "source_height",
+          "keyframes"
+        ],
+        "title": "CropPath",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "description": "Standard public API error response.",
+        "properties": {
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "description": "Minimal service liveness response.",
+        "properties": {
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "Job": {
+        "description": "Persisted state and outputs of a requested clipping job.",
+        "properties": {
+          "clips": {
+            "items": {
+              "$ref": "#/components/schemas/Clip"
+            },
+            "title": "Clips",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "media": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MediaInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "options": {
+            "$ref": "#/components/schemas/JobOptions"
+          },
+          "progress": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Progress",
+            "type": "number"
+          },
+          "source": {
+            "$ref": "#/components/schemas/JobSource"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "progress",
+          "source",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Job",
+        "type": "object"
+      },
+      "JobCreate": {
+        "description": "Request body for creating a clip-generation job.",
+        "properties": {
+          "options": {
+            "$ref": "#/components/schemas/JobOptions"
+          },
+          "source": {
+            "$ref": "#/components/schemas/JobSource"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "JobCreate",
+        "type": "object"
+      },
+      "JobError": {
+        "description": "Structured non-sensitive error details for a failed job.",
+        "properties": {
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "JobError",
+        "type": "object"
+      },
+      "JobOptions": {
+        "description": "User-selectable job settings with safe local defaults.",
+        "properties": {
+          "analysis_mode": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "heuristic",
+              "llm"
+            ],
+            "title": "Analysis Mode",
+            "type": "string"
+          },
+          "caption_style_id": {
+            "default": "clean-pop",
+            "examples": [
+              "clean-pop"
+            ],
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "title": "Caption Style Id",
+            "type": "string"
+          },
+          "layout": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "fill",
+              "fit"
+            ],
+            "title": "Layout",
+            "type": "string"
+          },
+          "max_clip_seconds": {
+            "default": 90,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Clip Seconds",
+            "type": "number"
+          },
+          "max_clips": {
+            "default": 8,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Clips",
+            "type": "integer"
+          },
+          "min_clip_seconds": {
+            "default": 20,
+            "exclusiveMinimum": 0.0,
+            "title": "Min Clip Seconds",
+            "type": "number"
+          },
+          "whisper_profile": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "fast",
+              "balanced",
+              "quality"
+            ],
+            "title": "Whisper Profile",
+            "type": "string"
+          }
+        },
+        "title": "JobOptions",
+        "type": "object"
+      },
+      "JobSource": {
+        "description": "User-selected URL or uploaded file reference.",
+        "properties": {
+          "type": {
+            "enum": [
+              "url",
+              "upload"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "value"
+        ],
+        "title": "JobSource",
+        "type": "object"
+      },
+      "JobStatus": {
+        "description": "Lifecycle state of a clip-generation job.",
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "failed",
+          "cancelled"
+        ],
+        "title": "JobStatus",
+        "type": "string"
+      },
+      "MediaInfo": {
+        "description": "Metadata for an acquired source media file.",
+        "properties": {
+          "duration": {
+            "minimum": 0.0,
+            "title": "Duration",
+            "type": "number"
+          },
+          "fps": {
+            "exclusiveMinimum": 0.0,
+            "title": "Fps",
+            "type": "number"
+          },
+          "has_audio": {
+            "title": "Has Audio",
+            "type": "boolean"
+          },
+          "height": {
+            "exclusiveMinimum": 0.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "format": "uri",
+                "maxLength": 2083,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "width": {
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "duration",
+          "width",
+          "height",
+          "fps",
+          "has_audio"
+        ],
+        "title": "MediaInfo",
+        "type": "object"
+      },
+      "Segment": {
+        "$defs": {
+          "Word": {
+            "description": "A word with timestamps and optional transcription confidence.",
+            "properties": {
+              "end": {
+                "minimum": 0,
+                "title": "End",
+                "type": "number"
+              },
+              "probability": {
+                "anyOf": [
+                  {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Probability"
+              },
+              "start": {
+                "minimum": 0,
+                "title": "Start",
+                "type": "number"
+              },
+              "text": {
+                "minLength": 1,
+                "title": "Text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "text",
+              "start",
+              "end"
+            ],
+            "title": "Word",
+            "type": "object"
+          }
+        },
+        "description": "A transcript sentence or speech segment.",
+        "properties": {
+          "end": {
+            "minimum": 0,
+            "title": "End",
+            "type": "number"
+          },
+          "id": {
+            "minimum": 0,
+            "title": "Id",
+            "type": "integer"
+          },
+          "start": {
+            "minimum": 0,
+            "title": "Start",
+            "type": "number"
+          },
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "words": {
+            "items": {
+              "$ref": "#/components/schemas/Word"
+            },
+            "title": "Words",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "start",
+          "end",
+          "text"
+        ],
+        "title": "Segment",
+        "type": "object"
+      },
+      "Stage": {
+        "description": "A pipeline stage with observable progress.",
+        "enum": [
+          "ingest",
+          "transcribe",
+          "segment",
+          "score",
+          "select",
+          "reframe",
+          "captions",
+          "render",
+          "export"
+        ],
+        "title": "Stage",
+        "type": "string"
+      },
+      "Transcript": {
+        "$defs": {
+          "Segment": {
+            "description": "A transcript sentence or speech segment.",
+            "properties": {
+              "end": {
+                "minimum": 0,
+                "title": "End",
+                "type": "number"
+              },
+              "id": {
+                "minimum": 0,
+                "title": "Id",
+                "type": "integer"
+              },
+              "start": {
+                "minimum": 0,
+                "title": "Start",
+                "type": "number"
+              },
+              "text": {
+                "minLength": 1,
+                "title": "Text",
+                "type": "string"
+              },
+              "words": {
+                "items": {
+                  "$ref": "#/components/schemas/Word"
+                },
+                "title": "Words",
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "start",
+              "end",
+              "text"
+            ],
+            "title": "Segment",
+            "type": "object"
+          },
+          "Word": {
+            "description": "A word with timestamps and optional transcription confidence.",
+            "properties": {
+              "end": {
+                "minimum": 0,
+                "title": "End",
+                "type": "number"
+              },
+              "probability": {
+                "anyOf": [
+                  {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Probability"
+              },
+              "start": {
+                "minimum": 0,
+                "title": "Start",
+                "type": "number"
+              },
+              "text": {
+                "minLength": 1,
+                "title": "Text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "text",
+              "start",
+              "end"
+            ],
+            "title": "Word",
+            "type": "object"
+          }
+        },
+        "description": "Timestamped transcript produced by an ASR model.",
+        "properties": {
+          "duration": {
+            "minimum": 0,
+            "title": "Duration",
+            "type": "number"
+          },
+          "language": {
+            "minLength": 1,
+            "title": "Language",
+            "type": "string"
+          },
+          "model": {
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/Segment"
+            },
+            "title": "Segments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "language",
+          "duration",
+          "model"
+        ],
+        "title": "Transcript",
+        "type": "object"
+      },
+      "UploadResponse": {
+        "description": "Reference returned after a local file upload is accepted.",
+        "properties": {
+          "filename": {
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "size_bytes": {
+            "minimum": 0.0,
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "upload_id": {
+            "minLength": 1,
+            "title": "Upload Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_id",
+          "filename",
+          "size_bytes"
+        ],
+        "title": "UploadResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "Word": {
+        "description": "A word with timestamps and optional transcription confidence.",
+        "properties": {
+          "end": {
+            "minimum": 0,
+            "title": "End",
+            "type": "number"
+          },
+          "probability": {
+            "anyOf": [
+              {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Probability"
+          },
+          "start": {
+            "minimum": 0,
+            "title": "Start",
+            "type": "number"
+          },
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "start",
+          "end"
+        ],
+        "title": "Word",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "OpenClip API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/caption-styles": {
+      "get": {
+        "description": "List available caption styles when presets are implemented.",
+        "operationId": "list_caption_styles_api_caption_styles_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CaptionStyle"
+                  },
+                  "title": "Response List Caption Styles Api Caption Styles Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not implemented yet."
+          }
+        },
+        "summary": "List Caption Styles",
+        "tags": [
+          "caption-styles"
+        ]
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "description": "List saved pipeline jobs when persistence is implemented.",
+        "operationId": "list_jobs_api_jobs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Job"
+                  },
+                  "title": "Response List Jobs Api Jobs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not implemented yet."
+          }
+        },
+        "summary": "List Jobs",
+        "tags": [
+          "jobs"
+        ]
+      },
+      "post": {
+        "description": "Create a pipeline job when persistence is implemented.",
+        "operationId": "create_job_api_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not implemented yet."
+          }
+        },
+        "summary": "Create Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "delete": {
+        "description": "Cancel or delete a job when persistence is implemented.",
+        "operationId": "delete_job_api_jobs__job_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not implemented yet."
+          }
+        },
+        "summary": "Delete Job",
+        "tags": [
+          "jobs"
+        ]
+      },
+      "get": {
+        "description": "Retrieve a job by identifier when persistence is implemented.",
+        "operationId": "get_job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not implemented yet."
+          }
+        },
+        "summary": "Get Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/clips/{clip_id}": {
+      "patch": {
+        "description": "Edit a clip selection when job editing is implemented.",
+        "operationId": "update_clip_api_jobs__job_id__clips__clip_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "clip_id",
+            "required": true,
+            "schema": {
+              "title": "Clip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClipUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Clip"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not implemented yet."
+          }
+        },
+        "summary": "Update Clip",
+        "tags": [
+          "clips"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/clips/{clip_id}/captions.ass": {
+      "get": {
+        "description": "Serve generated ASS captions when captions are implemented.",
+        "operationId": "clip_captions_api_jobs__job_id__clips__clip_id__captions_ass_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "clip_id",
+            "required": true,
+            "schema": {
+              "title": "Clip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "text/plain": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not implemented yet."
+          }
+        },
+        "summary": "Clip Captions",
+        "tags": [
+          "clips"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/clips/{clip_id}/preview": {
+      "get": {
+        "description": "Serve a captionless preview proxy when rendering is implemented.",
+        "operationId": "clip_preview_api_jobs__job_id__clips__clip_id__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "clip_id",
+            "required": true,
+            "schema": {
+              "title": "Clip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "video/mp4": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not implemented yet."
+          }
+        },
+        "summary": "Clip Preview",
+        "tags": [
+          "clips"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/clips/{clip_id}/thumbnail": {
+      "get": {
+        "description": "Serve a JPEG thumbnail when rendering is implemented.",
+        "operationId": "clip_thumbnail_api_jobs__job_id__clips__clip_id__thumbnail_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "clip_id",
+            "required": true,
+            "schema": {
+              "title": "Clip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "image/jpeg": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not implemented yet."
+          }
+        },
+        "summary": "Clip Thumbnail",
+        "tags": [
+          "clips"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/clips/{clip_id}/video": {
+      "get": {
+        "description": "Serve a rendered MP4 when rendering is implemented.",
+        "operationId": "clip_video_api_jobs__job_id__clips__clip_id__video_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "clip_id",
+            "required": true,
+            "schema": {
+              "title": "Clip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "video/mp4": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not implemented yet."
+          }
+        },
+        "summary": "Clip Video",
+        "tags": [
+          "clips"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/download.zip": {
+      "get": {
+        "description": "Serve a job archive when export is implemented.",
+        "operationId": "download_job_api_jobs__job_id__download_zip_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "application/zip": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not implemented yet."
+          }
+        },
+        "summary": "Download Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/events": {
+      "get": {
+        "description": "Stream job progress events when orchestration is implemented.",
+        "operationId": "job_events_api_jobs__job_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not implemented yet."
+          }
+        },
+        "summary": "Job Events",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/uploads": {
+      "post": {
+        "description": "Accept a local upload when ingestion is implemented.",
+        "operationId": "create_upload_api_uploads_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not implemented yet."
+          }
+        },
+        "summary": "Create Upload",
+        "tags": [
+          "uploads"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Report local service liveness.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "system"
+        ]
+      }
+    }
+  }
+}
