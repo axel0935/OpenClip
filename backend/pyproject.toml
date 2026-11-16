@@ -19,13 +19,17 @@ dependencies = [
   "typer>=0.15.0",
   "platformdirs>=4.3.0",
   "httpx>=0.28.0",
+  "yt-dlp>=2026.10.26",
 ]
 
 [project.scripts]
 openclip = "openclip.cli.main:app"
 
 [project.optional-dependencies]
-asr = []
+asr = [
+    "av>=11,<19",
+    "faster-whisper>=1.2.1",
+]
 vision = []
 llm = []
 
@@ -42,7 +46,10 @@ packages = ["src/openclip"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m \"not slow\""
+markers = [
+  "slow: tests that download models or run real media pipelines",
+]
 
 [tool.ruff]
 target-version = "py312"
