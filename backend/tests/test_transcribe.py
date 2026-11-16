@@ -71,16 +71,27 @@ def _patch_model(monkeypatch: pytest.MonkeyPatch, model: _FakeModel) -> None:
     monkeypatch.setattr("openclip.transcribe.service._load_model", fake_load)
 
 
-def test_resolve_profile_mapping() -> None:
+def test_resolve_profile_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
     """Profiles map to concrete Whisper models and decoding settings."""
+    import os
+
     assert resolve_profile(TranscribeConfig(profile="fast")).model == "base.en"
     assert resolve_profile(TranscribeConfig(profile="balanced")).model == "small.en"
     assert resolve_profile(TranscribeConfig(profile="quality")).model == "large-v3-turbo"
-    auto = resolve_profile(TranscribeConfig(profile="auto"))
-    assert auto.model == "small.en"
-    assert auto.device == "cpu"
-    assert auto.compute_type == "int8"
-    assert auto.beam_size == 5
+    monkeypatch.setattr(os, "cpu_count", lambda: 8)
+    weak = resolve_profile(TranscribeConfig(profile="auto"))
+    assert weak.model == "base.en"
+    assert weak.device == "cpu"
+    assert weak.compute_type == "int8"
+    assert weak.beam_size == 1
+    monkeypatch.setattr(os, "cpu_count", lambda: 16)
+    strong = resolve_profile(TranscribeConfig(profile="auto"))
+    assert strong.model == "small.en"
+    assert strong.beam_size == 5
+    monkeypatch.setattr(os, "cpu_count", lambda: 4)
+    measured = resolve_profile(TranscribeConfig(profile="auto"), measured_rtf=0.4)
+    assert measured.model == "small.en"
+    assert resolve_profile(TranscribeConfig(profile="auto"), measured_rtf=0.9).model == "base.en"
     assert resolve_profile(TranscribeConfig(profile="quality")).beam_size == 5
     override = resolve_profile(TranscribeConfig(profile="fast", beam_size=3))
     assert override.beam_size == 3

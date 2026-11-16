@@ -1,5 +1,6 @@
 """Transcription configuration and Whisper profile resolution."""
 
+import os
 from dataclasses import dataclass
 from typing import Literal
 
@@ -23,6 +24,29 @@ _PROFILE_BEAM_SIZES: dict[str, int] = {
 }
 
 
+# Measured on the N305 reference machine (8 threads, 179 s sample video):
+# fast (base.en) RTF 0.08 / 0.49 GB peak RSS, balanced (small.en) RTF 0.33 /
+# 0.87 GB. Transcript differences were minor (punctuation and compound-word
+# splits), so weak machines default to fast; strong machines get balanced.
+_STRONG_LOGICAL_CPUS = 12
+_MEASURED_RTF_STRONG = 0.5
+
+
+def _auto_profile(measured_rtf: float | None = None) -> str:
+    """Choose the ``auto`` profile from machine strength.
+
+    Returns ``balanced`` when the machine has at least
+    :data:`_STRONG_LOGICAL_CPUS` logical cores or the caller supplies a
+    measured realtime factor below :data:`_MEASURED_RTF_STRONG`; otherwise
+    ``fast``. Callers may always override by passing an explicit profile.
+    """
+    if measured_rtf is not None and measured_rtf < _MEASURED_RTF_STRONG:
+        return "balanced"
+    if (os.cpu_count() or 0) >= _STRONG_LOGICAL_CPUS:
+        return "balanced"
+    return "fast"
+
+
 class TranscribeConfig(BaseModel):
     """User-tunable settings for the transcription stage."""
 
@@ -44,9 +68,13 @@ class ResolvedModel:
     compute_type: str
 
 
-def resolve_profile(cfg: TranscribeConfig) -> ResolvedModel:
-    """Map a :class:`TranscribeConfig` to concrete model parameters."""
-    profile = "balanced" if cfg.profile == "auto" else cfg.profile
+def resolve_profile(cfg: TranscribeConfig, measured_rtf: float | None = None) -> ResolvedModel:
+    """Map a :class:`TranscribeConfig` to concrete model parameters.
+
+    ``measured_rtf`` optionally carries a realtime factor measured on this
+    machine; values below 0.5 mark it strong enough for ``balanced``.
+    """
+    profile = _auto_profile(measured_rtf) if cfg.profile == "auto" else cfg.profile
     model = _PROFILE_MODELS[profile]
     device = "cpu" if cfg.device == "auto" else cfg.device
     compute_type = cfg.compute_type or ("int8" if device == "cpu" else "float16")
