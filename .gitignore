@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.pyright/
+.uv-cache/
+.pnpm-store/
+.venv/
+venv/
+
+# Node and frontend builds
+node_modules/
+frontend/node_modules/
+frontend/dist/
+dist/
+coverage/
+
+# Environment and local OpenClip state
+.env
+.env.*
+!.env.example
+.openclip/
+openclip-data/
+models/
+cache/
+
+# Media
+*.mp4
+*.mkv
+*.wav
+
+# Agent workspace
+.zwork/
