@@ -45,10 +45,32 @@ def main(
 
 
 @app.command()
-def serve() -> None:
-    """Run the local API server on the configured host and port."""
+def serve(
+    host: Annotated[str | None, typer.Option("--host", help="Bind address.")] = None,
+    port: Annotated[int | None, typer.Option("--port", help="Bind port.")] = None,
+    open_browser: Annotated[bool, typer.Option("--open", help="Open the UI in a browser.")] = False,
+) -> None:
+    """Run the local API server, optionally serving the built frontend."""
+    import os
+    import webbrowser
+
     settings = Settings()
-    uvicorn.run(create_app(), host=settings.host, port=settings.port)
+    if host:
+        settings.host = host
+    if port:
+        settings.port = port
+    web_dir = os.environ.get("OPENCLIP_WEB_DIR") or "frontend/dist"
+    web_path = Path(web_dir)
+    if not web_path.is_absolute():
+        web_path = (
+            Path.cwd().parent / web_path if Path.cwd().name == "backend" else Path.cwd() / web_path
+        )
+    app = create_app(settings, web_dir=web_path if web_path.is_dir() else None)
+    url = f"http://{settings.host}:{settings.port}"
+    typer.echo(f"OpenClip API on {url}")
+    if open_browser:
+        webbrowser.open(url)
+    uvicorn.run(app, host=settings.host, port=settings.port)
 
 
 def _fail(exc: OpenClipError) -> NoReturn:
@@ -295,9 +317,106 @@ def captions(
 
 
 @app.command()
-def run() -> None:
-    """Run the future complete pipeline."""
-    _not_implemented()
+def run(
+    source: Annotated[str, typer.Argument(help="Local media path or http(s) URL.")],
+    out: Annotated[Path, typer.Option("--out", help="Output directory.")] = Path("openclip-out"),
+    max_clips: Annotated[int | None, typer.Option("--max-clips", min=1)] = None,
+    min_seconds: Annotated[float | None, typer.Option("--min-seconds", min=0.1)] = None,
+    max_seconds: Annotated[float | None, typer.Option("--max-seconds", min=0.1)] = None,
+    style: Annotated[str | None, typer.Option("--style", help="Caption style id.")] = None,
+    layout: Annotated[Literal["auto", "fill", "fit"], typer.Option("--layout")] = "auto",
+    profile: Annotated[
+        Literal["auto", "fast", "balanced", "quality"], typer.Option("--profile")
+    ] = "auto",
+    mode: Annotated[Literal["auto", "heuristic", "llm"], typer.Option("--mode")] = "auto",
+    resume: Annotated[bool, typer.Option("--resume", help="Resume an interrupted job.")] = False,
+) -> None:
+    """Run the full clipping pipeline without the server."""
+    import shutil
+    import threading
+
+    from openclip.core.models import Job, JobStatus
+    from openclip.pipeline import store
+    from openclip.pipeline.orchestrator import Pipeline
+
+    settings = Settings()
+    options = JobOptions(
+        min_clip_seconds=min_seconds if min_seconds is not None else 20,
+        max_clip_seconds=max_seconds if max_seconds is not None else 90,
+        max_clips=max_clips if max_clips is not None else 8,
+        caption_style_id=style or "clean-pop",
+        layout=layout,
+        whisper_profile=profile,
+        analysis_mode=mode,
+    )
+    job = Job(
+        id=store.new_job_id(),
+        status=JobStatus.QUEUED,
+        progress=0.0,
+        source=_source_arg(source),
+        options=options,
+        created_at=store.utcnow(),
+        updated_at=store.utcnow(),
+    )
+    pipeline = Pipeline(settings)
+    started = time.monotonic()
+
+    def worker() -> None:
+        try:
+            pipeline.execute(job)
+        except OpenClipError:
+            pass  # terminal state already persisted on the job
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    bar = typer.progressbar(length=1000, label="Starting")
+    progress = bar.__enter__()
+    state = {"value": 0}
+    try:
+        while thread.is_alive():
+            current = pipeline.job(job.id)
+            if current is not None:
+                target = max(state["value"], min(1000, int(current.progress * 1000)))
+                if target > state["value"]:
+                    progress.update(target - state["value"])
+                    state["value"] = target
+                progress.label = f"{current.stage or 'queued'}: {current.message or ''}"
+            time.sleep(0.3)
+        thread.join(timeout=5)
+    finally:
+        bar.__exit__(None, None, None)
+
+    final = pipeline.job(job.id)
+    if final is None or final.status != JobStatus.COMPLETED:
+        message = final.error.message if final and final.error else "pipeline failed"
+        typer.echo(f"error: {message}", err=True)
+        raise typer.Exit(code=1)
+
+    out.mkdir(parents=True, exist_ok=True)
+    workdir = store.job_dir(settings, job.id)
+    produced: list[Path] = []
+    for clip in final.clips:
+        clip_dir = workdir / "clips" / clip.id
+        if clip_dir.is_dir():
+            dest = out / clip.id
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(clip_dir, dest)
+            mp4 = dest / "clip.mp4"
+            if mp4.is_file():
+                produced.append(mp4)
+    results = workdir / "results.json"
+    if results.is_file():
+        shutil.copy2(results, out / "results.json")
+
+    elapsed = time.monotonic() - started
+    typer.echo(f"status: completed in {elapsed:.1f}s")
+    typer.echo(f"{'#':<3} {'score':>6} {'dur':>5}  title")
+    for rank, clip in enumerate(final.clips, 1):
+        typer.echo(f"{rank:<3} {clip.score:>6.1f} {clip.end - clip.start:>4.0f}s  {clip.title}")
+    typer.echo(f"output: {out}")
+    for path in produced:
+        typer.echo(f"  {path}")
 
 
 # Step 6: vertical reframing. Registered here because cli/main.py was clean.
