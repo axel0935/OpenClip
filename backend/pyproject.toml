@@ -20,6 +20,7 @@ dependencies = [
   "platformdirs>=4.3.0",
   "httpx>=0.28.0",
   "yt-dlp>=2026.10.26",
+  "pillow>=13.0.0",
 ]
 
 [project.scripts]
@@ -30,7 +31,10 @@ asr = [
     "av>=11,<19",
     "faster-whisper>=1.2.1",
 ]
-vision = []
+vision = [
+    "numpy>=2.5.5",
+    "opencv-python-headless>=5.0.0.93",
+]
 llm = []
 
 [dependency-groups]

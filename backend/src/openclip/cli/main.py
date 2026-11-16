@@ -245,12 +245,77 @@ def _not_implemented() -> None:
 
 
 @app.command()
-def captions() -> None:
-    """Run the future captions stage."""
-    _not_implemented()
+def captions(
+    transcript: Annotated[Path, typer.Argument(help="Path to transcript.json.")],
+    clips: Annotated[Path, typer.Option("--clips", help="Path to clips.json.")],
+    out: Annotated[
+        Path | None, typer.Option("--out", help="Output .ass file for the selected clip.")
+    ] = None,
+    style: Annotated[
+        str, typer.Option("--style", help="Caption style id from presets/captions.")
+    ] = "clean-pop",
+    rank: Annotated[
+        int | None, typer.Option("--rank", help="Select the clip by 1-based rank.", min=1)
+    ] = None,
+    clip_id: Annotated[str | None, typer.Option("--clip-id", help="Select the clip by id.")] = None,
+    preview: Annotated[
+        Path | None, typer.Option("--preview", help="Render a short preview MP4 here.")
+    ] = None,
+    video: Annotated[
+        Path | None, typer.Option("--video", help="Source video for --preview / --all-styles.")
+    ] = None,
+    all_styles: Annotated[
+        Path | None,
+        typer.Option(
+            "--all-styles", help="Write every preset's ASS, preview and a PNG sheet here."
+        ),
+    ] = None,
+    presets_dir: Annotated[
+        Path | None, typer.Option("--presets-dir", help="Directory of caption preset JSON files.")
+    ] = None,
+) -> None:
+    """Build ASS captions for one clip, or previews for every style."""
+    from openclip.cli.captions_cmd import run_captions
+
+    try:
+        run_captions(
+            transcript,
+            clips,
+            style_id=style,
+            out=out,
+            rank=rank,
+            clip_id=clip_id,
+            preview=preview,
+            video=video,
+            all_styles=all_styles,
+            presets_dir=presets_dir,
+        )
+    except OpenClipError as exc:
+        _fail(exc)
 
 
 @app.command()
 def run() -> None:
     """Run the future complete pipeline."""
     _not_implemented()
+
+
+# Step 6: vertical reframing. Registered here because cli/main.py was clean.
+# The reframe stage needs the optional 'vision' extra (numpy/opencv); without
+# it the command stays registered but reports a clear error.
+try:
+    from openclip.cli.reframe_cmd import reframe as _reframe_impl  # noqa: E402
+except ImportError:  # pragma: no cover - exercised only without the vision extra
+    _reframe_impl = None
+
+if _reframe_impl is not None:
+    app.command(name="reframe")(_reframe_impl)
+else:
+
+    @app.command(name="reframe")
+    def _reframe_missing() -> None:
+        typer.echo(
+            "error: reframing requires the 'vision' extra (run: uv sync --extra vision)",
+            err=True,
+        )
+        raise typer.Exit(code=1)
