@@ -27,6 +27,7 @@ from openclip.analyze.llm import (
     judge_candidates,
 )
 from openclip.analyze.scoring import (
+    duration_score,
     filler_density,
     heuristic_score,
     longest_word_gap,
@@ -236,6 +237,35 @@ def test_scene_detection_runs(tmp_path: Path) -> None:
 
 
 # ---------- heuristic scoring ----------
+
+
+def test_duration_score_length_preference() -> None:
+    """No bonus at the minimum, bonus at 30-60 s, penalty above ~75 s."""
+    assert duration_score(20.0) == 0.0
+    assert duration_score(29.9) == 0.0
+    assert duration_score(45.0) == pytest.approx(1.0)
+    assert duration_score(60.0) == pytest.approx(1.0)
+    assert 0.0 < duration_score(70.0) < 1.0
+    assert duration_score(75.0) == pytest.approx(0.5)
+    assert duration_score(100.0) < 0.0
+    # The term must not overturn a clearly better short window.
+    good_short = _features(hook_score=0.9, question_count=2, audio_energy=0.9)
+    ok_long = _features(hook_score=0.5, question_count=0, audio_energy=0.5)
+    short = heuristic_score(
+        good_short,
+        boundary_quality=0.9,
+        longest_gap=0.3,
+        text="Watch this. Did you know why?",
+        duration_seconds=25.0,
+    )
+    long_ = heuristic_score(
+        ok_long,
+        boundary_quality=0.9,
+        longest_gap=0.3,
+        text="A decent but plain explanation of the same idea.",
+        duration_seconds=50.0,
+    )
+    assert short > long_
 
 
 def test_heuristic_score_prefers_good_windows() -> None:

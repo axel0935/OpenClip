@@ -80,7 +80,7 @@ def _rms_per_second(audio_path: Path) -> list[float] | None:
 def _rms_per_second_numpy(audio_path: Path) -> list[float] | None:
     """Fallback RMS computation using numpy when audioop is unavailable."""
     try:
-        import numpy as np  # noqa: PLC0415 - optional transitive dependency
+        import numpy as np  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
     except ImportError:
         log.warning("no RMS implementation available; using neutral audio energy")
         return None

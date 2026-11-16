@@ -251,6 +251,7 @@ def find_candidates(
             boundary_quality=boundary_quality,
             longest_gap=longest_gap,
             text=" ".join(texts),
+            duration_seconds=end - start,
         )
         candidates.append(
             Candidate(

@@ -55,6 +55,9 @@ class HeuristicWeights:
     """Bonus scaled by the density of detected shot changes."""
     boundary: float = 10.0
     """Sentence alignment plus pause/topic-shift boundary quality (0-1)."""
+    duration: float = 8.0
+    """Length preference: bonus for 30-60 s sentence-aligned windows,
+    penalty above ~75 s, nothing at the minimum bound."""
     silence_penalty: float = 10.0
     """Penalty for dead air: longest internal word gap beyond ~1.5 s."""
     filler_penalty: float = 10.0
@@ -89,12 +92,32 @@ def longest_word_gap(word_starts: list[float], word_ends: list[float]) -> float:
     return max(gaps) if gaps else 0.0
 
 
+def duration_score(seconds: float) -> float:
+    """Length preference in ``[-1, 1]`` for a candidate window.
+
+    - ``< 30 s``: 0 — no bonus for sitting at the minimum clip length.
+    - ``30-60 s``: ramps to 1.0 (reached at ~45 s) — the sweet spot for
+      short-form clips, provided boundaries stay sentence-aligned (they do
+      by construction).
+    - ``60-75 s``: decays gently to 0.5.
+    - ``> 75 s``: turns negative — a mild penalty for overlong windows.
+    """
+    if seconds < 30.0:
+        return 0.0
+    if seconds <= 60.0:
+        return min(1.0, (seconds - 30.0) / 15.0)
+    if seconds <= 75.0:
+        return 1.0 - (seconds - 60.0) / 15.0 * 0.5
+    return max(-1.0, 0.5 - (seconds - 75.0) / 25.0)
+
+
 def heuristic_score(
     features: CandidateFeatures,
     *,
     boundary_quality: float,
     longest_gap: float,
     text: str,
+    duration_seconds: float = 0.0,
     weights: HeuristicWeights = DEFAULT_WEIGHTS,
 ) -> float:
     """Compute the 0-100 heuristic score for a candidate window.
@@ -109,6 +132,7 @@ def heuristic_score(
         "question": weights.question * min(1.0, features.question_count / 2.0),
         "scene_change": weights.scene_change * min(1.0, features.scene_changes / 3.0),
         "boundary": weights.boundary * max(0.0, min(1.0, boundary_quality)),
+        "duration": weights.duration * duration_score(duration_seconds),
     }
     silence = max(0.0, longest_gap - 1.5) / 3.0
     penalties = {
