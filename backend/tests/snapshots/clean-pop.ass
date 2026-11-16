@@ -13,12 +13,17 @@ Style: Default,Montserrat,104.8,&H00FFFFFF,&H0000D4FF,&H000E0C0B,&H7F000000,-1,0
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
-Dialogue: 1,0:00:00.00,0:00:01.10,Default,,0,0,0,,{\an5\pos(540,1609)\1c&H000000&\1a&H7F&\blur2.25}Hello there, friend.
+Dialogue: 1,0:00:00.00,0:00:00.32,Default,,0,0,0,,{\an5\pos(540,1609)\1c&H000000&\1a&H7F&\blur2.25\fscx80\fscy80\t(0,80,\fscx112\fscy112)\t(80,160,\fscx100\fscy100)}Hello there, friend.
 Dialogue: 3,0:00:00.00,0:00:00.32,Default,,0,0,0,,{\an5\pos(540,1608)\fscx80\fscy80\t(0,80,\fscx112\fscy112)\t(80,160,\fscx100\fscy100)}{\1c&H00D4FF&\1a&H00&}Hello{\1c&HFFFFFF&\1a&H00&} there, friend.
+Dialogue: 1,0:00:00.32,0:00:00.62,Default,,0,0,0,,{\an5\pos(540,1609)\1c&H000000&\1a&H7F&\blur2.25}Hello there, friend.
 Dialogue: 3,0:00:00.32,0:00:00.62,Default,,0,0,0,,{\an5\pos(540,1608)}Hello {\1c&H00D4FF&\1a&H00&}there,{\1c&HFFFFFF&\1a&H00&} friend.
+Dialogue: 1,0:00:00.62,0:00:01.10,Default,,0,0,0,,{\an5\pos(540,1609)\1c&H000000&\1a&H7F&\blur2.25}Hello there, friend.
 Dialogue: 3,0:00:00.62,0:00:01.10,Default,,0,0,0,,{\an5\pos(540,1608)}Hello there, {\1c&H00D4FF&\1a&H00&}friend.{\1c&HFFFFFF&\1a&H00&}
-Dialogue: 1,0:00:01.75,0:00:02.85,Default,,0,0,0,,{\an5\pos(540,1609)\1c&H000000&\1a&H7F&\blur2.25}How are you today?
+Dialogue: 1,0:00:01.75,0:00:01.97,Default,,0,0,0,,{\an5\pos(540,1609)\1c&H000000&\1a&H7F&\blur2.25\fscx80\fscy80\t(0,80,\fscx112\fscy112)\t(80,160,\fscx100\fscy100)}How are you today?
 Dialogue: 3,0:00:01.75,0:00:01.97,Default,,0,0,0,,{\an5\pos(540,1608)\fscx80\fscy80\t(0,80,\fscx112\fscy112)\t(80,160,\fscx100\fscy100)}{\1c&H00D4FF&\1a&H00&}How{\1c&HFFFFFF&\1a&H00&} are you today?
+Dialogue: 1,0:00:01.97,0:00:02.12,Default,,0,0,0,,{\an5\pos(540,1609)\1c&H000000&\1a&H7F&\blur2.25}How are you today?
 Dialogue: 3,0:00:01.97,0:00:02.12,Default,,0,0,0,,{\an5\pos(540,1608)}How {\1c&H00D4FF&\1a&H00&}are{\1c&HFFFFFF&\1a&H00&} you today?
+Dialogue: 1,0:00:02.12,0:00:02.32,Default,,0,0,0,,{\an5\pos(540,1609)\1c&H000000&\1a&H7F&\blur2.25}How are you today?
 Dialogue: 3,0:00:02.12,0:00:02.32,Default,,0,0,0,,{\an5\pos(540,1608)}How are {\1c&H00D4FF&\1a&H00&}you{\1c&HFFFFFF&\1a&H00&} today?
+Dialogue: 1,0:00:02.32,0:00:02.85,Default,,0,0,0,,{\an5\pos(540,1609)\1c&H000000&\1a&H7F&\blur2.25}How are you today?
 Dialogue: 3,0:00:02.32,0:00:02.85,Default,,0,0,0,,{\an5\pos(540,1608)}How are you {\1c&H00D4FF&\1a&H00&}today?{\1c&HFFFFFF&\1a&H00&}

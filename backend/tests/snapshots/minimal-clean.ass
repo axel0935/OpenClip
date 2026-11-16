@@ -13,7 +13,7 @@ Style: Default,Inter,70.18,&H00F5F7F7,&H00F5F7F7,&H00101010,&H99000000,0,0,0,0,1
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
-Dialogue: 1,0:00:00.00,0:00:01.10,Default,,0,0,0,,{\an5\pos(540,1656)\1c&H000000&\1a&H99&\blur1.5}Hello there, friend.
+Dialogue: 1,0:00:00.00,0:00:01.10,Default,,0,0,0,,{\an5\pos(540,1656)\1c&H000000&\1a&H99&\blur1.5\fad(120,80)}Hello there, friend.
 Dialogue: 3,0:00:00.00,0:00:01.10,Default,,0,0,0,,{\an5\pos(540,1655)\fad(120,80)}Hello there, friend.
-Dialogue: 1,0:00:01.75,0:00:02.85,Default,,0,0,0,,{\an5\pos(540,1656)\1c&H000000&\1a&H99&\blur1.5}How are you today?
+Dialogue: 1,0:00:01.75,0:00:02.85,Default,,0,0,0,,{\an5\pos(540,1656)\1c&H000000&\1a&H99&\blur1.5\fad(120,80)}How are you today?
 Dialogue: 3,0:00:01.75,0:00:02.85,Default,,0,0,0,,{\an5\pos(540,1655)\fad(120,80)}How are you today?

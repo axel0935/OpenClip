@@ -352,6 +352,18 @@ class TestBackgroundAndGlow:
         assert any(event[0] == GLOW_LAYER for event in events)
         assert any("\\blur" in event[3] for event in events)
 
+    def test_glow_shares_the_text_entry_animation(self) -> None:
+        """A glow at rest size under popping text separates visibly."""
+        style = _style("clean-pop")
+        events = _events(build_ass(make_transcript(), make_clip(), style))
+        text_slices = [event for event in events if event[0] == TEXT_LAYER]
+        glow_slices = [event for event in events if event[0] == GLOW_LAYER]
+        assert len(glow_slices) == len(text_slices)
+        for text_event, glow_event in zip(text_slices, glow_slices, strict=True):
+            assert (text_event[1], text_event[2]) == (glow_event[1], glow_event[2])
+            has_pop = "\\fscx80" in text_event[3]
+            assert ("\\fscx80" in glow_event[3]) is has_pop
+
     def test_no_glow_without_shadow_colour(self) -> None:
         style = _style("podcast-lower-third").model_copy(
             update={"shadow_color": None, "shadow_offset": 0}

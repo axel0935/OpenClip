@@ -13,14 +13,17 @@ Style: Default,Anton,180.27,&H00FFFFFF,&H00683DFF,&H00141010,&H4C000000,0,0,0,0,
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
-Dialogue: 1,0:00:00.00,0:00:00.62,Default,,0,0,0,,{\an5\pos(540,964)\1c&H000000&\1a&H4C&\blur4.5}HELLO THERE,
+Dialogue: 1,0:00:00.00,0:00:00.32,Default,,0,0,0,,{\an5\pos(540,964)\1c&H000000&\1a&H4C&\blur4.5}HELLO THERE,
 Dialogue: 3,0:00:00.00,0:00:00.32,Default,,0,0,0,,{\an5\pos(540,960)}{\1c&H683DFF&\1a&H00&}HELLO{\1c&HFFFFFF&\1a&H00&} THERE,
+Dialogue: 1,0:00:00.32,0:00:00.62,Default,,0,0,0,,{\an5\pos(540,964)\1c&H000000&\1a&H4C&\blur4.5}HELLO THERE,
 Dialogue: 3,0:00:00.32,0:00:00.62,Default,,0,0,0,,{\an5\pos(540,960)}HELLO {\1c&H683DFF&\1a&H00&}THERE,{\1c&HFFFFFF&\1a&H00&}
 Dialogue: 1,0:00:00.62,0:00:01.10,Default,,0,0,0,,{\an5\pos(540,964)\1c&H000000&\1a&H4C&\blur4.5}FRIEND.
 Dialogue: 3,0:00:00.62,0:00:01.10,Default,,0,0,0,,{\an5\pos(540,960)}FRIEND.
-Dialogue: 1,0:00:01.75,0:00:02.12,Default,,0,0,0,,{\an5\pos(540,964)\1c&H000000&\1a&H4C&\blur4.5}HOW ARE
+Dialogue: 1,0:00:01.75,0:00:01.97,Default,,0,0,0,,{\an5\pos(540,964)\1c&H000000&\1a&H4C&\blur4.5}HOW ARE
 Dialogue: 3,0:00:01.75,0:00:01.97,Default,,0,0,0,,{\an5\pos(540,960)}{\1c&H683DFF&\1a&H00&}HOW{\1c&HFFFFFF&\1a&H00&} ARE
+Dialogue: 1,0:00:01.97,0:00:02.12,Default,,0,0,0,,{\an5\pos(540,964)\1c&H000000&\1a&H4C&\blur4.5}HOW ARE
 Dialogue: 3,0:00:01.97,0:00:02.12,Default,,0,0,0,,{\an5\pos(540,960)}HOW {\1c&H683DFF&\1a&H00&}ARE{\1c&HFFFFFF&\1a&H00&}
-Dialogue: 1,0:00:02.12,0:00:02.85,Default,,0,0,0,,{\an5\pos(540,964)\1c&H000000&\1a&H4C&\blur4.5}YOU TODAY?
+Dialogue: 1,0:00:02.12,0:00:02.32,Default,,0,0,0,,{\an5\pos(540,964)\1c&H000000&\1a&H4C&\blur4.5}YOU TODAY?
 Dialogue: 3,0:00:02.12,0:00:02.32,Default,,0,0,0,,{\an5\pos(540,960)}{\1c&H683DFF&\1a&H00&}YOU{\1c&HFFFFFF&\1a&H00&} TODAY?
+Dialogue: 1,0:00:02.32,0:00:02.85,Default,,0,0,0,,{\an5\pos(540,964)\1c&H000000&\1a&H4C&\blur4.5}YOU TODAY?
 Dialogue: 3,0:00:02.32,0:00:02.85,Default,,0,0,0,,{\an5\pos(540,960)}YOU {\1c&H683DFF&\1a&H00&}TODAY?{\1c&HFFFFFF&\1a&H00&}

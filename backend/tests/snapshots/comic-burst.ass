@@ -13,14 +13,17 @@ Style: Default,Bangers,161.64,&H00FFFFFF,&H003AE0FF,&H002B0F1A,&H332B0F1A,0,0,0,
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
-Dialogue: 1,0:00:00.00,0:00:00.62,Default,,0,0,0,,{\an5\pos(540,1603)\1c&H2B0F1A&\1a&H33&\blur4.5}HELLO THERE,
+Dialogue: 1,0:00:00.00,0:00:00.32,Default,,0,0,0,,{\an5\pos(540,1603)\1c&H2B0F1A&\1a&H33&\blur4.5\fscx84\fscy84\t(0,70,\fscx114\fscy114)\t(70,150,\fscx95\fscy95)\t(150,220,\fscx105\fscy105)\t(220,290,\fscx100\fscy100)}HELLO THERE,
 Dialogue: 3,0:00:00.00,0:00:00.32,Default,,0,0,0,,{\an5\pos(540,1599)\fscx84\fscy84\t(0,70,\fscx114\fscy114)\t(70,150,\fscx95\fscy95)\t(150,220,\fscx105\fscy105)\t(220,290,\fscx100\fscy100)}{\1c&H3AE0FF&\1a&H00&}HELLO{\1c&HFFFFFF&\1a&H00&} THERE,
+Dialogue: 1,0:00:00.32,0:00:00.62,Default,,0,0,0,,{\an5\pos(540,1603)\1c&H2B0F1A&\1a&H33&\blur4.5}HELLO THERE,
 Dialogue: 3,0:00:00.32,0:00:00.62,Default,,0,0,0,,{\an5\pos(540,1599)}HELLO {\1c&H3AE0FF&\1a&H00&}THERE,{\1c&HFFFFFF&\1a&H00&}
-Dialogue: 1,0:00:00.62,0:00:01.10,Default,,0,0,0,,{\an5\pos(540,1603)\1c&H2B0F1A&\1a&H33&\blur4.5}FRIEND.
+Dialogue: 1,0:00:00.62,0:00:01.10,Default,,0,0,0,,{\an5\pos(540,1603)\1c&H2B0F1A&\1a&H33&\blur4.5\fscx84\fscy84\t(0,70,\fscx114\fscy114)\t(70,150,\fscx95\fscy95)\t(150,220,\fscx105\fscy105)\t(220,290,\fscx100\fscy100)}FRIEND.
 Dialogue: 3,0:00:00.62,0:00:01.10,Default,,0,0,0,,{\an5\pos(540,1599)\fscx84\fscy84\t(0,70,\fscx114\fscy114)\t(70,150,\fscx95\fscy95)\t(150,220,\fscx105\fscy105)\t(220,290,\fscx100\fscy100)}FRIEND.
-Dialogue: 1,0:00:01.75,0:00:02.12,Default,,0,0,0,,{\an5\pos(540,1603)\1c&H2B0F1A&\1a&H33&\blur4.5}HOW ARE
+Dialogue: 1,0:00:01.75,0:00:01.97,Default,,0,0,0,,{\an5\pos(540,1603)\1c&H2B0F1A&\1a&H33&\blur4.5\fscx84\fscy84\t(0,70,\fscx114\fscy114)\t(70,150,\fscx95\fscy95)\t(150,220,\fscx105\fscy105)\t(220,290,\fscx100\fscy100)}HOW ARE
 Dialogue: 3,0:00:01.75,0:00:01.97,Default,,0,0,0,,{\an5\pos(540,1599)\fscx84\fscy84\t(0,70,\fscx114\fscy114)\t(70,150,\fscx95\fscy95)\t(150,220,\fscx105\fscy105)\t(220,290,\fscx100\fscy100)}{\1c&H3AE0FF&\1a&H00&}HOW{\1c&HFFFFFF&\1a&H00&} ARE
+Dialogue: 1,0:00:01.97,0:00:02.12,Default,,0,0,0,,{\an5\pos(540,1603)\1c&H2B0F1A&\1a&H33&\blur4.5}HOW ARE
 Dialogue: 3,0:00:01.97,0:00:02.12,Default,,0,0,0,,{\an5\pos(540,1599)}HOW {\1c&H3AE0FF&\1a&H00&}ARE{\1c&HFFFFFF&\1a&H00&}
-Dialogue: 1,0:00:02.12,0:00:02.85,Default,,0,0,0,,{\an5\pos(540,1603)\1c&H2B0F1A&\1a&H33&\blur4.5}YOU TODAY?
+Dialogue: 1,0:00:02.12,0:00:02.32,Default,,0,0,0,,{\an5\pos(540,1603)\1c&H2B0F1A&\1a&H33&\blur4.5\fscx84\fscy84\t(0,70,\fscx114\fscy114)\t(70,150,\fscx95\fscy95)\t(150,220,\fscx105\fscy105)\t(220,290,\fscx100\fscy100)}YOU TODAY?
 Dialogue: 3,0:00:02.12,0:00:02.32,Default,,0,0,0,,{\an5\pos(540,1599)\fscx84\fscy84\t(0,70,\fscx114\fscy114)\t(70,150,\fscx95\fscy95)\t(150,220,\fscx105\fscy105)\t(220,290,\fscx100\fscy100)}{\1c&H3AE0FF&\1a&H00&}YOU{\1c&HFFFFFF&\1a&H00&} TODAY?
+Dialogue: 1,0:00:02.32,0:00:02.85,Default,,0,0,0,,{\an5\pos(540,1603)\1c&H2B0F1A&\1a&H33&\blur4.5}YOU TODAY?
 Dialogue: 3,0:00:02.32,0:00:02.85,Default,,0,0,0,,{\an5\pos(540,1599)}YOU {\1c&H3AE0FF&\1a&H00&}TODAY?{\1c&HFFFFFF&\1a&H00&}
