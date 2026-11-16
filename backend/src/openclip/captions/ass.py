@@ -278,6 +278,7 @@ def _glow_event(
     start_cs: int,
     end_cs: int,
     center_y: float,
+    entry_tags: str = "",
 ) -> Event | None:
     """Build a blurred copy of the chunk behind it, when the style asks for a glow.
 
@@ -287,6 +288,9 @@ def _glow_event(
     blurred copy on a lower layer reproduces the intended look using only the
     fields ``CaptionStyle`` already defines.
 
+    ``entry_tags`` must match the text layer's entry animation, otherwise the
+    shadow stays at rest size while the words pop, and the two separate visibly.
+
     Returns ``None`` for styles without a shadow colour and non-zero offset.
     """
     if style.shadow_color is None or style.shadow_offset <= 0:
@@ -295,7 +299,7 @@ def _glow_event(
     offset = style.shadow_offset * 0.6
     tags = (
         f"\\an5\\pos({CANVAS_WIDTH // 2},{round(center_y + offset)})"
-        f"{color_tags(style.shadow_color)}\\blur{blur:g}"
+        f"{color_tags(style.shadow_color)}\\blur{blur:g}{entry_tags}"
     )
     pieces = [f"{{{tags}}}"]
     line_of_word = _line_index_of_word(chunk)
@@ -421,11 +425,16 @@ def _events_for_chunk(
     plate = _background_plate(chunk, style, first_cs, last_cs, block_top)
     if plate is not None:
         events.append(plate)
-    glow = _glow_event(chunk, style, first_cs, last_cs, center_y)
-    if glow is not None:
-        events.append(glow)
+    entry = _entry_tags(style, center_y)
+
+    def add_glow(start: int, end: int, tags: str) -> None:
+        """Append a glow slice matching one text slice, entry animation included."""
+        glow = _glow_event(chunk, style, start, end, center_y, tags)
+        if glow is not None:
+            events.append(glow)
 
     if style.highlight_mode == "karaoke_fill":
+        add_glow(first_cs, last_cs, entry)
         segments = _karaoke_segments(chunk, first_cs, last_cs)
         events.append(
             Event(
@@ -438,19 +447,23 @@ def _events_for_chunk(
         return events
 
     if style.highlight_mode == "none" or len(chunk.words) == 1:
+        add_glow(first_cs, last_cs, entry)
         events.append(
             Event(
                 layer=TEXT_LAYER,
                 start_cs=first_cs,
                 end_cs=last_cs,
-                text=_chunk_text(chunk, style, center_y, None, _entry_tags(style, center_y)),
+                text=_chunk_text(chunk, style, center_y, None, entry),
             )
         )
         return events
 
     for index in range(len(chunk.words)):
         slice_start, slice_end = bounds[index], bounds[index + 1]
-        entry = _entry_tags(style, center_y) if index == 0 else ""
+        slice_entry = entry if index == 0 else ""
+        # One glow per text slice, sharing its entry animation: a single glow
+        # spanning the chunk would sit at rest size while the text pops.
+        add_glow(slice_start, slice_end, slice_entry)
         if style.highlight_mode == "word_box":
             events.append(_word_plate(chunk, style, index, slice_start, slice_end, block_top))
         events.append(
@@ -458,7 +471,7 @@ def _events_for_chunk(
                 layer=TEXT_LAYER,
                 start_cs=slice_start,
                 end_cs=slice_end,
-                text=_chunk_text(chunk, style, center_y, index, entry),
+                text=_chunk_text(chunk, style, center_y, index, slice_entry),
             )
         )
     return events
