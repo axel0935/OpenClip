@@ -20,3 +20,6 @@ class Settings(BaseSettings):
     llm_base_url: str | None = None
     llm_model: str | None = None
     ffmpeg_path: str = "ffmpeg"
+    ffprobe_path: str = "ffprobe"
+    max_video_minutes: int = 240
+    max_download_mb: int = 4096
