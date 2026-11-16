@@ -1,5 +1,6 @@
 """Typer command-line entry point for OpenClip."""
 
+import json
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -9,11 +10,13 @@ import typer
 import uvicorn
 
 from openclip import __version__
+from openclip.analyze import analyze as run_analyze
 from openclip.api.app import create_app
 from openclip.core.config import Settings
 from openclip.core.errors import OpenClipError
-from openclip.core.models import JobSource, MediaInfo
+from openclip.core.models import JobOptions, JobSource, MediaInfo, Transcript
 from openclip.ingest import ingest as run_ingest
+from openclip.ingest.ffprobe import probe_media
 from openclip.transcribe import TranscribeConfig
 from openclip.transcribe import transcribe as run_transcribe
 
@@ -153,16 +156,92 @@ def transcribe(
     typer.echo(f"transcript: {workdir / 'transcript.json'}")
 
 
+def _load_transcript(path: Path) -> Transcript:
+    """Load a Transcript from a raw JSON file or a transcript.json cache envelope."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(data, dict) and "transcript" in data:
+        return Transcript.model_validate(data["transcript"])
+    return Transcript.model_validate(data)
+
+
+def _load_media(value: str, workdir: Path, settings: Settings) -> MediaInfo:
+    """Resolve --media into MediaInfo from a JSON file or a video path."""
+    media_path = Path(value)
+    if media_path.suffix.lower() == ".json":
+        return MediaInfo.model_validate_json(media_path.read_text(encoding="utf-8"))
+    return probe_media(media_path, settings)
+
+
+def _fmt_time(seconds: float) -> str:
+    """Format seconds as m:ss for the CLI table."""
+    minutes, secs = divmod(max(0.0, seconds), 60.0)
+    return f"{int(minutes)}:{secs:04.1f}"
+
+
+@app.command()
+def analyze(
+    transcript_path: Annotated[Path, typer.Argument(help="Path to transcript.json.")],
+    media: Annotated[
+        str | None,
+        typer.Option("--media", help="MediaInfo JSON file or video path."),
+    ] = None,
+    workdir: Annotated[
+        Path | None,
+        typer.Option("--workdir", help="Directory for clips.json (default: transcript dir)."),
+    ] = None,
+    mode: Annotated[
+        Literal["auto", "heuristic", "llm"],
+        typer.Option("--mode", help="Analysis mode."),
+    ] = "auto",
+    max_clips: Annotated[
+        int | None,
+        typer.Option("--max-clips", help="Maximum number of clips.", min=1),
+    ] = None,
+) -> None:
+    """Detect highlight clips from a transcript and print a ranked table."""
+    settings = Settings()
+    out_dir = workdir or transcript_path.parent
+    try:
+        transcript = _load_transcript(transcript_path)
+        if media is not None:
+            media_info = _load_media(media, out_dir, settings)
+        else:
+            media_file = out_dir / "media.json"
+            if not media_file.is_file():
+                raise OpenClipError("Provide --media or a media.json next to the transcript.")
+            media_info = MediaInfo.model_validate_json(media_file.read_text(encoding="utf-8"))
+        options = JobOptions(analysis_mode=mode, max_clips=max_clips or 8)
+        report, close = _progress_bar("Analyzing")
+        try:
+            clips = run_analyze(transcript, media_info, options, settings=settings, progress=report)
+        finally:
+            close()
+    except OpenClipError as exc:
+        _fail(exc)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    if not clips:
+        typer.echo("No clips found.")
+        return
+    typer.echo(f"{'#':<3} {'start-end':<13} {'dur':>5} {'score':>6}  title")
+    for rank, clip in enumerate(clips, 1):
+        span = f"{_fmt_time(clip.start)}-{_fmt_time(clip.end)}"
+        typer.echo(
+            f"{rank:<3} {span:<13} {clip.end - clip.start:>4.0f}s {clip.score:>6.1f}  {clip.title}"
+        )
+    out_path = out_dir / "clips.json"
+    out_path.write_text(
+        json.dumps([c.model_dump(mode="json") for c in clips], indent=2), encoding="utf-8"
+    )
+    typer.echo(f"clips: {out_path}")
+
+
 def _not_implemented() -> None:
     """Exit consistently for future pipeline commands."""
     typer.echo("not implemented yet")
     raise typer.Exit(code=2)
-
-
-@app.command()
-def analyze() -> None:
-    """Run the future analysis stage."""
-    _not_implemented()
 
 
 @app.command()
