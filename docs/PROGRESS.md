@@ -25,3 +25,6 @@ Clips found on the real sample (heuristic mode, `/tmp/oc-bench-fast`):
 | 3 | 1:50-2:11 | 21s | 40.0 | This is actually against their policies. |
 | 4 | 0:32-0:54 | 22s | 31.5 | Low trust means YouTube would rather push out someone |
 | 5 | 2:37-2:59 | 22s | 27.6 | View-jailed more often, or only pushed to subscribers. |
+- Step 4 (2026-11-16): implemented 3 UI screens (Import, Processing, Results) matching UI_SPEC tokens and copy, isolated behind `ApiClient` with default `MockApiClient` (9-stage simulation, SVG thumbnails, cancel, ?mock=error) and `HttpApiClient`.
+- Caption style picker previews all 8 presets with Fontsource OFL fonts, live sample highlight, and roving tabindex keyboard navigation.
+- Hash-based navigation (`#/`, `#/jobs/:id`), TanStack Query state, dark/light/system theme, trim nudges, results sorting, vitest suite (16 tests).
