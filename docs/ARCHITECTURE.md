@@ -42,10 +42,15 @@ flowchart LR
 | `question` | 5 | Scaled by question count in the window. |
 | `scene_change` | 5 | Scaled by ffmpeg scene-cut count (2 fps, threshold 0.3). |
 | `boundary` | 10 | Sentence alignment + edge pauses + topic-shift quality. |
+| `duration` | 8 | Length preference: 0 below 30 s, bonus for 30–60 s sentence-aligned windows, mild penalty above ~75 s. |
 | `silence_penalty` | 10 | Longest internal word gap beyond ~1.5 s. |
 | `filler_penalty` | 10 | Density of filler words ("um", "like", "basically"…). |
 
 The optional LLM judge rescores only the top 12 heuristic candidates; final score is `0.6·llm + 0.4·heuristic` when it answers, heuristic-only otherwise.
+
+## Reframing
+
+`compute_crop_path(media, clip, layout)` samples the clip at ~4 fps and 640 px width through FFmpeg rawvideo pipes (one frame in memory at a time), detects faces with YuNet (`face_detection_yunet_2023mar.onnx`, OpenCV Zoo, MIT; downloaded once into the data dir `models/` with a SHA-256 check), and tracks identities by nearest-centroid matching with short dropout tolerance. The main subject is chosen by area × confidence × persistence and switched only after another face dominates for ≥ 1.5 s (hysteresis). The 9:16 crop spans the full source height; its horizontal centre follows the subject through a ±8 % dead zone, a low-pass filter and a 0.35 crop-widths/s pan limit, snapping instantly at detected scene cuts. The path is RDP-simplified to ≤ ~40 keyframes/minute and always covers `t=0` and the clip end. Layouts: `fill` (subject-following crop, centred fallback), `fit` (single full-frame keyframe; Step 7 renders it over a blurred copy), `auto` (fill only when faces appear in ≥ 60 % of samples, else fit, with the reason logged). Sources already 9:16 or taller than wide pass through as full-frame `fill`. Without the `vision` extra the stage degrades to `fit`/centred crops; the CLI reports a clear error.
 
 ## Resource budget
 
