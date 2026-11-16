@@ -31,3 +31,8 @@ Clips found on the real sample (heuristic mode, `/tmp/oc-bench-fast`):
 - Part 0/Step 6 (2026-11-16): only one sample exists (no >10 min video), so analyze was re-run on the 3-min sample.
 - Scoring: added named `duration` term (weight 8; 0 below 30 s, bonus for 30-60 s sentence-aligned windows, penalty above ~75 s); new clips: 0:00-1:00.2 (49.6), 1:49.8-2:40.6 (45.1), 1:14.6-1:37.8 (32.9), 2:36.8-2:58.9 (27.6).
 - Step 6 reframe: YuNet face tracking + smoothed 9:16 crop path (`reframe/`, `openclip reframe`); on the sample auto->fit (no persistent faces), fill = stable centred crop (3 keyframes), ~0.57x realtime, 0.32 GB peak RSS.
+- Step 3 (2026-11-16): `captions` stage: `build_ass` (ASS 1080x1920, `none|word_color|word_box|karaoke_fill`, pop/fade/slide_up/bounce, plates, glow), `load_presets`, `fonts`, `openclip captions --out/--preview/--all-styles`, Pillow measurement.
+- Decision: libass fits `Fontsize` to usWinAscent+usWinDescent, not the em — generator emits `font_size * ratio` (read from the TTF header), else text is 18-45% small; `fontsdir` must stay flat because libass never recurses.
+- Decision: `Shadow` renders as a hard offset glyph copy over display type, so presets keep `shadow_*` but the generator draws a blurred lower layer instead.
+- Fonts: 8 families (12 static TTFs, all OFL-1.1) in `assets/fonts/`, flat, licence + README next to them; largest file 420 KB, so no pre-commit threshold change. `make check` backend green (231 tests).
+- Next: Step 7 render stage consumes `ffmpeg_subtitles_filter`; frontend `pnpm` is absent on this machine, so `make check` stops at the frontend leg.
