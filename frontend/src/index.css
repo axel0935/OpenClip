@@ -1,21 +1,76 @@
 @import "tailwindcss";
 
+@import "@fontsource/inter/index.css";
+@import "@fontsource/montserrat/index.css";
+@import "@fontsource/anton/index.css";
+@import "@fontsource/poppins/index.css";
+@import "@fontsource/archivo-black/index.css";
+@import "@fontsource/bebas-neue/index.css";
+@import "@fontsource/bangers/index.css";
+@import "@fontsource/oswald/index.css";
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
+  --color-popover: var(--popover);
+  --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-destructive: var(--destructive);
+  --color-score-low: var(--score-low);
+  --color-score-medium: var(--score-medium);
+  --color-score-high: var(--score-high);
 }
 
 :root {
   color-scheme: dark;
-  --background: #09090b;
-  --foreground: #fafafa;
-  --card: #18181b;
-  --muted-foreground: #a1a1aa;
-  --border: #27272a;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  --background: #0B0C0E;
+  --card: #141619;
+  --popover: #17191D;
+  --foreground: #F3F4F6;
+  --muted-foreground: #9BA2AB;
+  --muted: #1B1E22;
+  --border: #2A2E34;
+  --input: #616A75;
+  --primary: #F3F4F6;
+  --primary-foreground: #0B0C0E;
+  --ring: #F3F4F6;
+  --success: #4CC38A;
+  --warning: #E3A63C;
+  --destructive: #F26874;
+  --score-low: #A6ADB5;
+  --score-medium: #E9AE45;
+  --score-high: #57D19B;
+  --radius: 10px;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+:root.light {
+  color-scheme: light;
+  --background: #FAFAFA;
+  --card: #FFFFFF;
+  --popover: #FFFFFF;
+  --foreground: #17181A;
+  --muted-foreground: #63676D;
+  --muted: #F1F1F2;
+  --border: #E5E5E7;
+  --input: #8E949C;
+  --primary: #17181A;
+  --primary-foreground: #FAFAFA;
+  --ring: #17181A;
+  --success: #146046;
+  --warning: #8A5A0F;
+  --destructive: #B4242F;
+  --score-low: #5A5F66;
+  --score-medium: #7A4F0C;
+  --score-high: #16704A;
 }
 
 * {
@@ -24,4 +79,7 @@
 
 body {
   margin: 0;
+  background-color: var(--background);
+  color: var(--foreground);
+  min-height: 100vh;
 }
