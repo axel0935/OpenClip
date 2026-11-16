@@ -30,6 +30,23 @@ flowchart LR
 | `api` | Expose the local HTTP contract. |
 | `cli` | Make every pipeline stage usable without the web UI. |
 
+## Highlight scoring
+
+`find_candidates` builds sentence-aligned windows of `min_clip_seconds`–`max_clip_seconds`, prefers boundaries at pauses ≥ 0.4 s and topic shifts (pure-Python bag-of-words cosine between adjacent blocks), then scores each window 0–100 with `HeuristicWeights` in `analyze/scoring.py`:
+
+| Component | Weight | Meaning |
+| --- | --- | --- |
+| `hook` | 30 | Opening-grab rules on the first ~3 s (question, numbers, strong claims, second person, contrast; filler/pronoun/greeting penalties). |
+| `speech_rate` | 15 | Triangular score peaking at ~3 words/second. |
+| `audio_energy` | 10 | Per-second RMS of `audio.wav`, normalized by the 95th percentile. |
+| `question` | 5 | Scaled by question count in the window. |
+| `scene_change` | 5 | Scaled by ffmpeg scene-cut count (2 fps, threshold 0.3). |
+| `boundary` | 10 | Sentence alignment + edge pauses + topic-shift quality. |
+| `silence_penalty` | 10 | Longest internal word gap beyond ~1.5 s. |
+| `filler_penalty` | 10 | Density of filler words ("um", "like", "basically"…). |
+
+The optional LLM judge rescores only the top 12 heuristic candidates; final score is `0.6·llm + 0.4·heuristic` when it answers, heuristic-only otherwise.
+
 ## Resource budget
 
 - The whole pipeline must remain under 3 GB peak RAM on the reference N305 machine.
