@@ -36,3 +36,7 @@ Clips found on the real sample (heuristic mode, `/tmp/oc-bench-fast`):
 - Decision: `Shadow` renders as a hard offset glyph copy over display type, so presets keep `shadow_*` but the generator draws a blurred lower layer instead.
 - Fonts: 8 families (12 static TTFs, all OFL-1.1) in `assets/fonts/`, flat, licence + README next to them; largest file 420 KB, so no pre-commit threshold change. `make check` backend green (231 tests).
 - Next: Step 7 render stage consumes `ffmpeg_subtitles_filter`; frontend `pnpm` is absent on this machine, so `make check` stops at the frontend leg.
+- Step 7 (2026-11-16): `render/` (piecewise crop-path ffmpeg expression, fit blurred backdrop, burned ASS captions, cached encoder probe, thumbnails + 360x640 preview proxies), `pipeline/` (stage weights ingest .10 transcribe .25 analyze .15 reframe .10 captions .05 render .30 export .05, SQLite store, FIFO queue + SSE bus, resume markers), real API routes, `openclip run`/`serve`.
+- Real run on the 179 s sample: 3 clips (60/51/23 s), 276 s wall, peak RSS 1.48 GB, encoder x264 (hw probe did not beat it); all outputs 1080x1920 h264+aac yuv420p, A/V sync <=20 ms, captions verified burned vs captionless previews.
+- API smoke on the 70 s Goggins clip: upload -> job -> SSE (61 progress, clip_ready, done) -> Range 206 video, thumbnail, download.zip; server stopped cleanly, no leftover processes.
+
