@@ -23,3 +23,4 @@ class Settings(BaseSettings):
     ffprobe_path: str = "ffprobe"
     max_video_minutes: int = 240
     max_download_mb: int = 4096
+    max_upload_mb: int = 4096
