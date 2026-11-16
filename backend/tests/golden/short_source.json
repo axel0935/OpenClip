@@ -1,0 +1,309 @@
+{
+ "language": "en",
+ "duration": 26.0,
+ "model": "golden",
+ "segments": [
+  {
+   "id": 0,
+   "start": 0.0,
+   "end": 6.0,
+   "text": "This quick tip will save you hours every single week.",
+   "words": [
+    {
+     "text": "This",
+     "start": 0.0,
+     "end": 0.6,
+     "probability": 0.92
+    },
+    {
+     "text": "quick",
+     "start": 0.6,
+     "end": 1.2,
+     "probability": 0.92
+    },
+    {
+     "text": "tip",
+     "start": 1.2,
+     "end": 1.8,
+     "probability": 0.92
+    },
+    {
+     "text": "will",
+     "start": 1.8,
+     "end": 2.4,
+     "probability": 0.92
+    },
+    {
+     "text": "save",
+     "start": 2.4,
+     "end": 3.0,
+     "probability": 0.92
+    },
+    {
+     "text": "you",
+     "start": 3.0,
+     "end": 3.6,
+     "probability": 0.92
+    },
+    {
+     "text": "hours",
+     "start": 3.6,
+     "end": 4.2,
+     "probability": 0.92
+    },
+    {
+     "text": "every",
+     "start": 4.2,
+     "end": 4.8,
+     "probability": 0.92
+    },
+    {
+     "text": "single",
+     "start": 4.8,
+     "end": 5.4,
+     "probability": 0.92
+    },
+    {
+     "text": "week.",
+     "start": 5.4,
+     "end": 6.0,
+     "probability": 0.92
+    }
+   ]
+  },
+  {
+   "id": 1,
+   "start": 6.0,
+   "end": 13.0,
+   "text": "You just press two keys and the whole document reformats itself instantly.",
+   "words": [
+    {
+     "text": "You",
+     "start": 6.0,
+     "end": 6.583,
+     "probability": 0.92
+    },
+    {
+     "text": "just",
+     "start": 6.583,
+     "end": 7.167,
+     "probability": 0.92
+    },
+    {
+     "text": "press",
+     "start": 7.167,
+     "end": 7.75,
+     "probability": 0.92
+    },
+    {
+     "text": "two",
+     "start": 7.75,
+     "end": 8.333,
+     "probability": 0.92
+    },
+    {
+     "text": "keys",
+     "start": 8.333,
+     "end": 8.917,
+     "probability": 0.92
+    },
+    {
+     "text": "and",
+     "start": 8.917,
+     "end": 9.5,
+     "probability": 0.92
+    },
+    {
+     "text": "the",
+     "start": 9.5,
+     "end": 10.083,
+     "probability": 0.92
+    },
+    {
+     "text": "whole",
+     "start": 10.083,
+     "end": 10.667,
+     "probability": 0.92
+    },
+    {
+     "text": "document",
+     "start": 10.667,
+     "end": 11.25,
+     "probability": 0.92
+    },
+    {
+     "text": "reformats",
+     "start": 11.25,
+     "end": 11.833,
+     "probability": 0.92
+    },
+    {
+     "text": "itself",
+     "start": 11.833,
+     "end": 12.417,
+     "probability": 0.92
+    },
+    {
+     "text": "instantly.",
+     "start": 12.417,
+     "end": 13.0,
+     "probability": 0.92
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "start": 13.0,
+   "end": 20.0,
+   "text": "Try it right now on any file and watch what happens next.",
+   "words": [
+    {
+     "text": "Try",
+     "start": 13.0,
+     "end": 13.583,
+     "probability": 0.92
+    },
+    {
+     "text": "it",
+     "start": 13.583,
+     "end": 14.167,
+     "probability": 0.92
+    },
+    {
+     "text": "right",
+     "start": 14.167,
+     "end": 14.75,
+     "probability": 0.92
+    },
+    {
+     "text": "now",
+     "start": 14.75,
+     "end": 15.333,
+     "probability": 0.92
+    },
+    {
+     "text": "on",
+     "start": 15.333,
+     "end": 15.917,
+     "probability": 0.92
+    },
+    {
+     "text": "any",
+     "start": 15.917,
+     "end": 16.5,
+     "probability": 0.92
+    },
+    {
+     "text": "file",
+     "start": 16.5,
+     "end": 17.083,
+     "probability": 0.92
+    },
+    {
+     "text": "and",
+     "start": 17.083,
+     "end": 17.667,
+     "probability": 0.92
+    },
+    {
+     "text": "watch",
+     "start": 17.667,
+     "end": 18.25,
+     "probability": 0.92
+    },
+    {
+     "text": "what",
+     "start": 18.25,
+     "end": 18.833,
+     "probability": 0.92
+    },
+    {
+     "text": "happens",
+     "start": 18.833,
+     "end": 19.417,
+     "probability": 0.92
+    },
+    {
+     "text": "next.",
+     "start": 19.417,
+     "end": 20.0,
+     "probability": 0.92
+    }
+   ]
+  },
+  {
+   "id": 3,
+   "start": 20.0,
+   "end": 26.0,
+   "text": "That is the entire trick and it works on every version.",
+   "words": [
+    {
+     "text": "That",
+     "start": 20.0,
+     "end": 20.545,
+     "probability": 0.92
+    },
+    {
+     "text": "is",
+     "start": 20.545,
+     "end": 21.091,
+     "probability": 0.92
+    },
+    {
+     "text": "the",
+     "start": 21.091,
+     "end": 21.636,
+     "probability": 0.92
+    },
+    {
+     "text": "entire",
+     "start": 21.636,
+     "end": 22.182,
+     "probability": 0.92
+    },
+    {
+     "text": "trick",
+     "start": 22.182,
+     "end": 22.727,
+     "probability": 0.92
+    },
+    {
+     "text": "and",
+     "start": 22.727,
+     "end": 23.273,
+     "probability": 0.92
+    },
+    {
+     "text": "it",
+     "start": 23.273,
+     "end": 23.818,
+     "probability": 0.92
+    },
+    {
+     "text": "works",
+     "start": 23.818,
+     "end": 24.364,
+     "probability": 0.92
+    },
+    {
+     "text": "on",
+     "start": 24.364,
+     "end": 24.909,
+     "probability": 0.92
+    },
+    {
+     "text": "every",
+     "start": 24.909,
+     "end": 25.455,
+     "probability": 0.92
+    },
+    {
+     "text": "version.",
+     "start": 25.455,
+     "end": 26.0,
+     "probability": 0.92
+    }
+   ]
+  }
+ ]
+}
