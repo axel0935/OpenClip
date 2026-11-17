@@ -1,0 +1,54 @@
+name: Docker
+
+# Validates docker/Dockerfile on pull requests that touch it. Nothing is pushed
+# to a registry and no credential is used: this job only proves the image builds
+# and that the container answers on /health.
+
+on:
+  pull_request:
+    paths:
+      - "docker/**"
+      - ".dockerignore"
+      - "backend/pyproject.toml"
+      - "backend/hatch_build.py"
+      - "pnpm-lock.yaml"
+      - "frontend/package.json"
+      - ".github/workflows/docker.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          load: true
+          tags: openclip:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke-test the container
+        run: |
+          docker run --rm -d --name openclip-ci -p 127.0.0.1:8000:8000 openclip:ci
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/health > /tmp/health.json; then
+              cat /tmp/health.json
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8000/health | grep -q '"status":"ok"'
+          # The web bundle must be served as well, not only the API.
+          curl -fsS http://127.0.0.1:8000/ | grep -qi "<div id=\"root\">"
+          docker stop openclip-ci
