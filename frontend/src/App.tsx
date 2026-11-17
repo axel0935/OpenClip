@@ -65,6 +65,10 @@ export function MainApp() {
   // Backend-reachability state
   const [backendUnreachable, setBackendUnreachable] = useState(false);
 
+  // Per-clip render version, bumped on every clip_ready SSE event. Used by
+  // the results screen to cache-bust thumbnail/video/preview URLs.
+  const [clipVersions, setClipVersions] = useState<Record<string, number>>({});
+
   // Queries
   const captionStylesQuery = useQuery({
     queryKey: ["caption-styles"],
@@ -137,15 +141,23 @@ export function MainApp() {
         setBackendUnreachable(false);
       },
       (clip) => {
-        // clip_ready — add to the job's clips array immediately
+        // clip_ready — upsert into the job's clips and bump the media version
+        // so thumbnail/video/preview URLs are refetched (new clip or re-render).
+        setClipVersions((prev) => ({
+          ...prev,
+          [clip.id]: (prev[clip.id] ?? 0) + 1,
+        }));
         queryClient.setQueryData(["job", activeJobId], (prev: Job | undefined) => {
           if (!prev) return prev;
           const existing = prev.clips ?? [];
-          // Avoid duplicates if the clip was already added by a poll
-          if (existing.some((c) => c.id === clip.id)) return prev;
+          const index = existing.findIndex((c) => c.id === clip.id);
+          const nextClips =
+            index >= 0
+              ? existing.map((c) => (c.id === clip.id ? clip : c))
+              : [...existing, clip];
           return {
             ...prev,
-            clips: [...existing, clip],
+            clips: nextClips,
           };
         });
       },
@@ -155,7 +167,13 @@ export function MainApp() {
         void queryClient.invalidateQueries({ queryKey: ["jobs"] });
       },
       (error) => {
-        // SSE error event from server (not a connection error)
+        // Clip-scoped re-render failure: surface it without failing the job.
+        const clipId = (error as { clip_id?: string }).clip_id;
+        if (clipId) {
+          toast(`Clip re-render failed: ${error.message}`, "destructive");
+          return;
+        }
+        // SSE error event from server (job-level failure)
         queryClient.setQueryData(["job", activeJobId], (prev: Job | undefined) => {
           if (!prev) return prev;
           return {
@@ -168,7 +186,7 @@ export function MainApp() {
       },
     );
     return () => unsub();
-  }, [activeJobId, queryClient]);
+  }, [activeJobId, queryClient, toast]);
 
   // Mutations
   const createJobMutation = useMutation({
@@ -291,6 +309,7 @@ export function MainApp() {
           <ResultsScreen
             job={currentJob}
             captionStyles={captionStyles}
+            clipVersions={clipVersions}
             onNewVideo={handleNewVideo}
             onUpdateClip={(clipId, update) =>
               updateClipMutation.mutateAsync({ clipId, update })

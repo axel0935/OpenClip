@@ -1,11 +1,13 @@
 import { act, render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { ResultsScreen } from "./ResultsScreen";
 import { ToastProvider } from "./ui/toast";
 import { MockApiClient, generateMockClips } from "@/api/mockClient";
-import type { Job } from "@/api/client";
+import { defaultApiClient, type Job } from "@/api/client";
 
 describe("ResultsScreen", () => {
+  afterEach(() => vi.restoreAllMocks());
+
   const mockClips = generateMockClips();
   const mockJob: Job = {
     id: "job-test-123",
@@ -130,12 +132,31 @@ describe("ResultsScreen", () => {
       </ToastProvider>,
     );
 
+    const videoUrlSpy = vi
+      .spyOn(defaultApiClient, "getVideoUrl")
+      .mockReturnValue("/api/jobs/job-test-123/clips/clip-1/video");
+    const previewUrlSpy = vi
+      .spyOn(defaultApiClient, "getPreviewUrl")
+      .mockReturnValue("/api/jobs/job-test-123/clips/clip-1/preview");
+
     // Click first card
     const firstCard = screen.getByText("The single thing that changed everything");
     fireEvent.click(firstCard);
 
     // Detail drawer opens
-    expect(screen.getByText("Preview only — captions are burned in on re-render.")).toBeInTheDocument();
+    expect(screen.getByText("Hook:")).toBeInTheDocument();
+
+    const video = document.querySelector("video");
+    expect(video).not.toBeNull();
+    expect(video?.getAttribute("src")).toContain("/video");
+    expect(screen.queryByText("this is the part that")).not.toBeInTheDocument();
+
+    // Toggle switches the player to the low-res preview proxy
+    // (the <video> remounts because its key includes the source kind)
+    fireEvent.click(screen.getByRole("button", { name: /switch to preview/i }));
+    expect(document.querySelector("video")?.getAttribute("src")).toContain("/preview");
+    videoUrlSpy.mockRestore();
+    previewUrlSpy.mockRestore();
 
     // Nudge trim start +0.1s
     const nudgeButton = screen.getAllByText("+0.1s")[0];
@@ -154,5 +175,42 @@ describe("ResultsScreen", () => {
       start: 14.1,
       end: 52.0,
     }));
+  });
+
+  it("cache-busts clip media URLs when clipVersions bumps (clip_ready)", async () => {
+    const client = new MockApiClient();
+    const presets = await client.listCaptionStyles();
+    const onUpdateClip = vi.fn();
+
+    const { rerender } = render(
+      <ToastProvider>
+        <ResultsScreen
+          job={mockJob}
+          captionStyles={presets}
+          clipVersions={{ "clip-1": 1 }}
+          onNewVideo={vi.fn()}
+          onUpdateClip={onUpdateClip}
+        />
+      </ToastProvider>,
+    );
+
+    // Open the first clip's drawer
+    fireEvent.click(screen.getByText("The single thing that changed everything"));
+    const video = document.querySelector("video");
+    expect(video?.getAttribute("src")).toContain("?v=1-");
+
+    // Simulate the clip_ready SSE event bumping the version
+    rerender(
+      <ToastProvider>
+        <ResultsScreen
+          job={mockJob}
+          captionStyles={presets}
+          clipVersions={{ "clip-1": 2 }}
+          onNewVideo={vi.fn()}
+          onUpdateClip={onUpdateClip}
+        />
+      </ToastProvider>,
+    );
+    expect(document.querySelector("video")?.getAttribute("src")).toContain("?v=2-");
   });
 });

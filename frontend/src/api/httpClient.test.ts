@@ -112,6 +112,24 @@ describe("HttpApiClient", () => {
 
   // ── updateClip (PATCH flow) ────────────────────────────────────────────────
 
+  it("updateClip surfaces 409 rerender_in_progress as ApiError", async () => {
+    fetchMock.mockResolvedValueOnce(
+      makeErrorResponse("rerender_in_progress", "A re-render is already running.", 409),
+    );
+    await expect(
+      client.updateClip("job-1", "clip-1", { caption_style_id: "bold-impact" }),
+    ).rejects.toMatchObject({ code: "rerender_in_progress", httpStatus: 409 });
+  });
+
+  it("updateClip surfaces 422 validation errors as ApiError", async () => {
+    fetchMock.mockResolvedValueOnce(
+      makeErrorResponse("invalid_duration", "Clip length must be within 20-90 seconds.", 422),
+    );
+    await expect(
+      client.updateClip("job-1", "clip-1", { start: 0, end: 5 }),
+    ).rejects.toMatchObject({ code: "invalid_duration", httpStatus: 422 });
+  });
+
   it("updateClip sends PATCH with correct body and returns updated clip", async () => {
     const updatedClip: Clip = {
       id: "clip-1",

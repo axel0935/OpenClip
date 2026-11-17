@@ -6,6 +6,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import type { Job, Stage } from "@/api/client";
+import { jobTitle } from "@/api/client";
 import { isFfmpegMissingCode } from "@/api/httpClient";
 
 interface ProcessingScreenProps {
@@ -121,7 +122,7 @@ export function ProcessingScreen({ job, onCancel, onRetry }: ProcessingScreenPro
     setTimeout(() => setCopiedId(false), 2000);
   };
 
-  const title = job.media?.title || job.source.value;
+  const title = jobTitle(job);
   const isFailed = job.status === "failed";
   const progressPercent = Math.round((job.progress || 0) * 100);
 

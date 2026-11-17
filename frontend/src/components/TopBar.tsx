@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import type { Job } from "@/api/client";
+import { jobTitle } from "@/api/client";
 
 interface TopBarProps {
   jobs: Job[];
@@ -168,7 +169,7 @@ export function TopBar({ jobs, currentJobId, onSelectJob, onNewVideo, backendUnr
               <div className="flex flex-col gap-2">
                 {jobs.map((job) => {
                   const isCurrent = job.id === currentJobId;
-                  const title = job.media?.title || job.source.value;
+                  const title = jobTitle(job);
                   const dateLabel = new Date(job.created_at).toLocaleString([], {
                     month: "short",
                     day: "numeric",
@@ -198,7 +199,7 @@ export function TopBar({ jobs, currentJobId, onSelectJob, onNewVideo, backendUnr
                             {job.status === "completed" && (
                               <Badge variant="success" className="text-[10px] gap-1 px-1.5 py-0">
                                 <CheckCircle2 className="h-3 w-3" />
-                                <span>{job.clips?.length ?? 0} clips</span>
+                                <span>{job.clips?.length ?? 0} {job.clips?.length === 1 ? "clip" : "clips"}</span>
                               </Badge>
                             )}
                             {job.status === "running" && (

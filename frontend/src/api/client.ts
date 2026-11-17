@@ -16,6 +16,14 @@ export type MediaInfo = components["schemas"]["MediaInfo"];
 export type JobOptions = components["schemas"]["JobOptions"];
 export type JobSource = components["schemas"]["JobSource"];
 
+/** Human-readable job title: media title, else the source file's basename. */
+export function jobTitle(job: Job): string {
+  if (job.media?.title) return job.media.title;
+  const value = job.source.value;
+  const base = value.split(/[\\/]/).pop();
+  return base && base.length > 0 ? base : value;
+}
+
 /**
  * Progress event payload. The HTTP backend sends `_job_event` shape
  * ({id, status, stage, progress, message}); the contract doc and the mock

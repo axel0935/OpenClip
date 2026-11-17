@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import {
   Download,
   Plus,
@@ -16,15 +16,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet } from "@/components/ui/sheet";
-import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
 import type { CaptionStyle, Clip, ClipUpdate, Job } from "@/api/client";
-import { defaultApiClient } from "@/api/client";
-import { CaptionStylePreview } from "./CaptionStylePicker";
+import { defaultApiClient, jobTitle } from "@/api/client";
+import { ApiError } from "@/api/httpClient";
 
 interface ResultsScreenProps {
   job: Job;
   captionStyles: CaptionStyle[];
+  /** Per-clip render version bumped on every clip_ready SSE event. */
+  clipVersions?: Record<string, number>;
   onNewVideo: () => void;
   onUpdateClip: (clipId: string, update: ClipUpdate) => Promise<Clip>;
 }
@@ -34,6 +35,7 @@ type SortOption = "score_desc" | "duration_desc" | "duration_asc" | "source_orde
 export function ResultsScreen({
   job,
   captionStyles,
+  clipVersions,
   onNewVideo,
   onUpdateClip,
 }: ResultsScreenProps) {
@@ -47,14 +49,18 @@ export function ResultsScreen({
   const [selectedStyleId, setSelectedStyleId] = useState<string>(
     job.options?.caption_style_id || "clean-pop",
   );
-  const [isReRendering, setIsReRendering] = useState(false);
-  const [reRenderProgress, setReRenderProgress] = useState(0);
+  // Re-render state: the clip id currently re-rendering (null = idle) plus the
+  // clipVersions value at PATCH time, so the clip_ready SSE event that follows
+  // the background render can be detected.
+  const [rerenderingClipId, setRerenderingClipId] = useState<string | null>(null);
+  const [rerenderBaseVersion, setRerenderBaseVersion] = useState(0);
+  const rerenderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cache-busting token incremented after each re-render
+  // Cache-busting tokens: local bumps plus server clip_versions from SSE.
   const [mediaCacheBust, setMediaCacheBust] = useState<Record<string, number>>({});
 
-  // Video player preview toggle (preview proxy vs final render)
-  const [usePreviewProxy, setUsePreviewProxy] = useState(true);
+  // Player source: final render by default, toggle to the low-res preview.
+  const [usePreview, setUsePreview] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -64,18 +70,22 @@ export function ResultsScreen({
   const clips = useMemo(() => job.clips || [], [job.clips]);
 
   const cacheBust = useCallback(
-    (clipId: string) =>
-      mediaCacheBust[clipId] ? `?v=${mediaCacheBust[clipId]}` : "",
-    [mediaCacheBust],
+    (clipId: string) => {
+      const version = clipVersions?.[clipId] ?? 0;
+      const local = mediaCacheBust[clipId] ?? 0;
+      return version || local ? `?v=${version}-${local}` : "";
+    },
+    [clipVersions, mediaCacheBust],
   );
+
+  const isReRendering =
+    rerenderingClipId !== null && rerenderingClipId === selectedClip?.id;
 
   const handleSelectClip = (clip: Clip) => {
     setSelectedClip(clip);
     setTrimStart(clip.start);
     setTrimEnd(clip.end);
-    setIsReRendering(false);
-    setReRenderProgress(0);
-    setUsePreviewProxy(true);
+    setUsePreview(false);
   };
 
   // Sorting
@@ -139,53 +149,84 @@ export function ResultsScreen({
   const isShortWarning = currentClipDuration < minClip;
   const isLongWarning = currentClipDuration > maxClip;
 
-  const handleReRender = async () => {
-    if (!selectedClip) return;
-    setIsReRendering(true);
-    setReRenderProgress(5);
+  // Finish the re-render spinner when the clip_ready SSE event bumps this
+  // clip's version past the value captured at PATCH time.
+  useEffect(() => {
+    if (rerenderingClipId === null) return;
+    const version = clipVersions?.[rerenderingClipId] ?? 0;
+    if (version <= rerenderBaseVersion) return;
+    if (rerenderTimeoutRef.current) {
+      clearTimeout(rerenderTimeoutRef.current);
+      rerenderTimeoutRef.current = null;
+    }
+    setRerenderingClipId(null);
+    const live = clips.find((c) => c.id === rerenderingClipId);
+    if (live) {
+      setSelectedClip(live);
+      setTrimStart(live.start);
+      setTrimEnd(live.end);
+    }
+    toast("Clip re-rendered");
+  }, [clipVersions, rerenderingClipId, rerenderBaseVersion, clips, toast]);
 
-    // Animate progress bar up to 90% while waiting for the server
-    const interval = setInterval(() => {
-      setReRenderProgress((p) => {
-        if (p >= 85) {
-          clearInterval(interval);
-          return 85;
-        }
-        return p + 10;
-      });
-    }, 1500);
+  // Fallback when the SSE clip_ready never arrives: after 2 minutes assume the
+  // render finished and bust the media cache so revalidation picks it up.
+  useEffect(() => {
+    return () => {
+      if (rerenderTimeoutRef.current) clearTimeout(rerenderTimeoutRef.current);
+    };
+  }, []);
+
+  // Keep the open clip in sync when job.clips changes (clip_ready upserts).
+  const liveClip = useMemo(
+    () => clips.find((c) => c.id === selectedClip?.id) ?? null,
+    [clips, selectedClip?.id],
+  );
+  useEffect(() => {
+    if (!selectedClip || !liveClip || liveClip === selectedClip || isReRendering) {
+      return;
+    }
+    const trimsDirty =
+      Math.abs(trimStart - selectedClip.start) > 1e-6 ||
+      Math.abs(trimEnd - selectedClip.end) > 1e-6;
+    setSelectedClip(liveClip);
+    if (!trimsDirty) {
+      setTrimStart(liveClip.start);
+      setTrimEnd(liveClip.end);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveClip]);
+
+  const handleReRender = async () => {
+    if (!selectedClip || isReRendering) return;
+    const clipId = selectedClip.id;
+    setRerenderingClipId(clipId);
+    setRerenderBaseVersion(clipVersions?.[clipId] ?? 0);
+
+    rerenderTimeoutRef.current = setTimeout(() => {
+      rerenderTimeoutRef.current = null;
+      setRerenderingClipId((cur) => (cur === clipId ? null : cur));
+      setMediaCacheBust((prev) => ({ ...prev, [clipId]: Date.now() }));
+      toast("Re-render is taking longer than expected — reload to check", "warning");
+    }, 120_000);
 
     try {
-      const updated = await onUpdateClip(selectedClip.id, {
+      const updated = await onUpdateClip(clipId, {
         start: trimStart,
         end: trimEnd,
         caption_style_id: selectedStyleId,
       });
-      clearInterval(interval);
-      setReRenderProgress(100);
-
-      // Bump cache-buster so thumbnail/video reload, then again after a delay:
-      // the backend re-renders clips in the background after the PATCH returns.
-      setMediaCacheBust((prev) => ({
-        ...prev,
-        [selectedClip.id]: Date.now(),
-      }));
-      const clipId = selectedClip.id;
-      setTimeout(() => {
-        setMediaCacheBust((prev) => ({ ...prev, [clipId]: Date.now() }));
-      }, 8000);
-
-      setTimeout(() => {
-        setIsReRendering(false);
-        setSelectedClip(updated);
-        setTrimStart(updated.start);
-        setTrimEnd(updated.end);
-        toast("Clip re-rendered successfully");
-      }, 300);
-    } catch {
-      clearInterval(interval);
-      setIsReRendering(false);
-      toast("Failed to re-render clip", "destructive");
+      setSelectedClip(updated);
+      setTrimStart(updated.start);
+      setTrimEnd(updated.end);
+      // Spinner stays until the clip_ready SSE event (or the 2 min fallback).
+    } catch (err) {
+      if (rerenderTimeoutRef.current) {
+        clearTimeout(rerenderTimeoutRef.current);
+        rerenderTimeoutRef.current = null;
+      }
+      setRerenderingClipId(null);
+      toast(err instanceof ApiError ? err.message : "Failed to re-render clip", "destructive");
     }
   };
 
@@ -229,17 +270,19 @@ export function ResultsScreen({
     <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-6 md:px-8">
       {/* Hidden live region for screen reader progress */}
       <div aria-live="polite" aria-atomic="true" className="sr-only">
-        {clips.length > 0 && `${clips.length} clips ready. ${progressPct}% complete.`}
+        {clips.length > 0 &&
+          `${clips.length} ${clips.length === 1 ? "clip" : "clips"} ready. ${progressPct}% complete.`}
       </div>
 
       {/* Top Header bar */}
       <div className="flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="truncate text-xl font-bold text-foreground max-w-lg md:text-2xl">
-            {job.media?.title || job.source.value}
+            {jobTitle(job)}
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            {clips.length} clips · {totalDurationSaved} min saved
+            {clips.length} {clips.length === 1 ? "clip" : "clips"}
+            {totalDurationSaved > 0 && ` · ${totalDurationSaved} min saved`}
           </p>
         </div>
 
@@ -383,15 +426,14 @@ export function ResultsScreen({
       >
         {selectedClip && (
           <div className="mt-4 flex flex-col gap-6 pb-6">
-            {/* Video Player / Preview */}
+            {/* Video Player: final render by default, low-res preview on toggle */}
             <div className="relative mx-auto aspect-[9/16] w-full max-w-[280px] overflow-hidden rounded-xl border border-border bg-black shadow-lg">
               {selectedClip.output_file ? (
-                // Real video — use native <video> with preview proxy or final render
                 <video
                   ref={videoRef}
-                  key={`${selectedClip.id}-${usePreviewProxy ? "preview" : "video"}-${mediaCacheBust[selectedClip.id] ?? 0}`}
+                  key={`${selectedClip.id}-${usePreview ? "preview" : "video"}-${cacheBust(selectedClip.id)}`}
                   src={
-                    usePreviewProxy
+                    usePreview
                       ? `${defaultApiClient.getPreviewUrl(job.id, selectedClip.id)}${cacheBust(selectedClip.id)}`
                       : `${defaultApiClient.getVideoUrl(job.id, selectedClip.id)}${cacheBust(selectedClip.id)}`
                   }
@@ -402,19 +444,11 @@ export function ResultsScreen({
                   aria-label={`Preview of ${selectedClip.title}`}
                 />
               ) : (
-                // No rendered file yet — show thumbnail
                 <img
                   src={`${defaultApiClient.getThumbnailUrl(job.id, selectedClip.id)}${cacheBust(selectedClip.id)}`}
                   alt={selectedClip.title}
                   className="h-full w-full object-cover"
                 />
-              )}
-
-              {/* Caption preview overlay — HTML approximation (JASSUB excluded: LGPL) */}
-              {selectedClip.output_file && (
-                <div className="pointer-events-none absolute bottom-6 left-2 right-2 flex justify-center">
-                  <CaptionStylePreview style={activeStyle ?? captionStyles[0]} isHovered />
-                </div>
               )}
             </div>
 
@@ -424,21 +458,17 @@ export function ResultsScreen({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setUsePreviewProxy((v) => !v)}
+                  onClick={() => setUsePreview((v) => !v)}
                   className="h-7 gap-1.5 text-xs text-muted-foreground"
                 >
-                  {usePreviewProxy ? (
-                    <><Eye className="h-3.5 w-3.5" /> Preview proxy</>
+                  {usePreview ? (
+                    <><Eye className="h-3.5 w-3.5" /> Preview proxy · switch to final</>
                   ) : (
-                    <><EyeOff className="h-3.5 w-3.5" /> Final render</>
+                    <><EyeOff className="h-3.5 w-3.5" /> Final render · switch to preview</>
                   )}
                 </Button>
               </div>
             )}
-
-            <p className="text-center text-xs text-muted-foreground italic">
-              Preview only — captions are burned in on re-render.
-            </p>
 
             {/* Hook & Rationale */}
             <div className="rounded-xl border border-border bg-card/60 p-3.5 flex flex-col gap-1.5 text-xs">
@@ -558,10 +588,14 @@ export function ResultsScreen({
               >
                 <RotateCcw className={`h-4 w-4 ${isReRendering ? "animate-spin" : ""}`} />
                 {isReRendering
-                  ? `Rendering… ${reRenderProgress}%`
+                  ? "Re-rendering in background…"
                   : "Re-render clip · ≈ 15 s"}
               </Button>
-              {isReRendering && <Progress value={reRenderProgress} className="h-1.5" aria-label="Re-render progress" />}
+              {isReRendering && (
+                <p className="text-center text-xs text-muted-foreground" role="status">
+                  Re-rendering captions and video — this clip will refresh automatically.
+                </p>
+              )}
             </div>
 
             {/* Actions: Download MP4 & Copy Buttons */}
