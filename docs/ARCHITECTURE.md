@@ -28,7 +28,7 @@ flowchart LR
 | `render` | Invoke FFmpeg with argument lists to produce clips. |
 | `pipeline` | Persist jobs and orchestrate sequential, cancellable stages. |
 | `api` | Expose the local HTTP contract. |
-| `cli` | Make every pipeline stage usable without the web UI. |
+| `cli` | Make every pipeline stage usable without the web UI, plus `serve`, `doctor` and `models download`. |
 
 ## Highlight scoring
 
@@ -60,7 +60,37 @@ Artifacts live in `<data_dir>/jobs/<job_id>/` (`media.json`, `transcript.json`, 
 
 ## Rendering
 
-`render_clip(media, clip, crop, ass_path, out_path, cfg)` produces 1080x1920 H.264/AAC-128k MP4 (`+faststart`, yuv420p, source fps capped at 30). `fill` crops follow the `CropPath` keyframes through a piecewise-linear FFmpeg `crop` `t` expression, then `scale=1080:1920`; `fit` scales the frame to 1080 wide centered over a blurred, zoomed copy of itself. Captions are burned with the `subtitles` filter built by `captions/fonts.py` (proper escaping, `fontsdir` limited to real font files). `render_thumbnail` grabs a JPEG at ~30 % into the clip (540x960); `render_preview` produces a 360x640 ultrafast captionless proxy for the browser preview. Encoding uses `detect_encoder()`: a one-time probe (cached in `<data_dir>/encoder.json`) tries `h264_vaapi`/`h264_qsv` via a tiny test encode and keeps hardware encoding only if it beats `libx264 -preset veryfast -crf 21` on this machine; `OPENCLIP_ENCODER=x264|vaapi|qsv|auto` overrides. Loudness is untouched unless the gentle `loudnorm` option is enabled. Progress comes from `-progress pipe:1`; cancellation kills the ffmpeg process and removes partial outputs.
+`render_clip(media, clip, crop, ass_path, out_path, cfg)` produces 1080x1920 H.264/AAC-128k MP4 (`+faststart`, yuv420p, source fps capped at 30). `fill` crops follow the `CropPath` keyframes through a piecewise-linear FFmpeg `crop` `t` expression, then `scale=1080:1920`; `fit` scales the frame to 1080 wide centered over a blurred, zoomed copy of itself. Captions are burned with the `subtitles` filter built by `captions/fonts.py` (proper escaping, `fontsdir` limited to the flat font directory, which holds TTFs only). `render_thumbnail` grabs a JPEG at ~30 % into the clip (540x960); `render_preview` produces a 360x640 ultrafast captionless proxy for the browser preview. Encoding uses `detect_encoder()`: a one-time probe (cached in `<data_dir>/encoder.json`) tries `h264_vaapi`/`h264_qsv` via a tiny test encode and keeps hardware encoding only if it beats `libx264 -preset veryfast -crf 21` on this machine; `OPENCLIP_ENCODER=x264|vaapi|qsv|auto` overrides. Loudness is untouched unless the gentle `loudnorm` option is enabled. Progress comes from `-progress pipe:1`; cancellation kills the ffmpeg process and removes partial outputs.
+
+## Packaging and distribution
+
+The wheel is the shipping unit. `backend/hatch_build.py` (a hatch build hook)
+stages the repository assets into the package before the archive is written and
+removes them afterwards, so the source tree stays clean:
+
+| Repository path | Inside the wheel | Why |
+| --- | --- | --- |
+| `presets/captions/*.json` | `openclip/data/presets/captions/` | caption styles |
+| `assets/fonts/*.ttf` (flat) | `openclip/data/fonts/` | fonts for libass and Pillow |
+| `assets/licenses/*` | `openclip/data/licenses/` | OFL texts, kept out of `fontsdir` |
+| `assets/fonts/README.md` | `openclip/data/README-fonts.md` | font inventory and provenance |
+| `LICENSE` | `openclip/data/LICENSE` | Apache-2.0 notice |
+| `frontend/dist/` | `openclip/web/` | built web UI, staged by CI / `make build-wheel` |
+
+`core/resources.py` is the single resolver: explicit argument, environment
+variable (`OPENCLIP_PRESETS_DIR`, `OPENCLIP_FONTS_DIR`, `OPENCLIP_WEB_DIR`),
+installed package data, then the repository directory. `openclip serve` follows
+the same order for the UI, so a checkout serves `frontend/dist` while an installed
+wheel serves its bundled copy and, failing both, runs API-only with a hint.
+`openclip doctor` reports which of those paths was taken.
+
+Optional extras keep the base install light: `asr` (faster-whisper, PyAV),
+`vision` (numpy, OpenCV headless), an empty `llm` (the judge speaks HTTP through
+`httpx`, a base dependency) and `all` = `asr` + `vision`. Releases are built by
+`.github/workflows/release.yml` on `v*` tags: build the UI, build the wheel and
+sdist with the UI staged, run the test suite, verify the wheel in a clean venv
+(`openclip doctor --json` must not fail) and attach both artifacts to a GitHub
+Release. Nothing is published to PyPI yet.
 
 ## Resource budget
 
