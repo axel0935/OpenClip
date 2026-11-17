@@ -72,20 +72,31 @@ def video_filter_chain(
     return ",".join(parts)
 
 
-def preview_filter_chain(crop: CropPath, media: MediaInfo, out_w: int, out_h: int) -> str:
-    """Captionless low-res variant of the video chain for the proxy preview."""
+def preview_filter_chain(
+    crop: CropPath,
+    media: MediaInfo,
+    out_w: int,
+    out_h: int,
+    ass_filter: str | None = None,
+) -> str:
+    """Low-res variant of the video chain for the proxy preview.
+
+    When ``ass_filter`` is given the same burned-in captions as the final
+    render are composited (libass scales the 1080x1920 ASS to the frame).
+    """
+    captions = f",{ass_filter}" if ass_filter else ""
     if crop.layout == "fill":
         kf0 = crop.keyframes[0]
         x_expr = crop_x_expression(crop.keyframes)
         return (
             f"setpts=PTS-STARTPTS,"
             f"crop={kf0.w}:{kf0.h}:x='{x_expr}':y=0,"
-            f"scale={out_w}:{out_h},fps=30,format=yuv420p"
+            f"scale={out_w}:{out_h},fps=30{captions},format=yuv420p"
         )
     return (
         "setpts=PTS-STARTPTS,"
         f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
-        f"crop={out_w}:{out_h},fps=30,format=yuv420p"
+        f"crop={out_w}:{out_h},fps=30{captions},format=yuv420p"
     )
 
 

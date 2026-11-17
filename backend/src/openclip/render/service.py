@@ -340,14 +340,24 @@ def render_preview(
     out_path: Path,
     settings: Settings | None = None,
     *,
+    ass_path: Path | None = None,
     cancel: threading.Event | None = None,
 ) -> Path:
-    """Render a low-res captionless 9:16 proxy for the browser preview."""
+    """Render a low-res 9:16 proxy for the browser preview.
+
+    When ``ass_path`` is given the same ASS captions as the final render are
+    burned in, so the preview matches what the user will download.
+    """
     settings = settings or Settings()
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     duration = max(0.1, clip.end - clip.start)
-    chain = preview_filter_chain(crop, media, *_PREVIEW_SIZE)
+    ass_filter = None
+    if ass_path is not None:
+        from openclip.captions.fonts import ffmpeg_subtitles_filter, fonts_dir_or_none
+
+        ass_filter = ffmpeg_subtitles_filter(ass_path, fonts_dir_or_none())
+    chain = preview_filter_chain(crop, media, *_PREVIEW_SIZE, ass_filter=ass_filter)
     cmd = [
         settings.ffmpeg_path,
         "-hide_banner",
