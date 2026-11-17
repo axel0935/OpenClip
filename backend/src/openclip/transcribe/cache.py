@@ -44,6 +44,16 @@ def cache_params(cfg: TranscribeConfig) -> dict[str, Any]:
     }
 
 
+def _transcript_from_payload(payload: object) -> Transcript | None:
+    """Validate the ``transcript`` member of a cache envelope."""
+    if not isinstance(payload, dict):
+        return None
+    try:
+        return Transcript.model_validate(payload.get("transcript"))
+    except ValueError:
+        return None
+
+
 def load_cached(workdir: Path, key: str) -> Transcript | None:
     """Return the cached transcript when its key matches, else ``None``."""
     cache_file = workdir / CACHE_FILENAME
@@ -53,12 +63,25 @@ def load_cached(workdir: Path, key: str) -> Transcript | None:
         payload = json.loads(cache_file.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return None
-    if payload.get("cache_key") != key:
+    if not isinstance(payload, dict) or payload.get("cache_key") != key:
+        return None
+    return _transcript_from_payload(payload)
+
+
+def load_cached_transcript(workdir: Path) -> Transcript | None:
+    """Return the cached transcript regardless of cache key.
+
+    Used by pipeline resume paths (e.g. clip re-render) that must read the
+    ``{"cache_key", "transcript"}`` envelope written by :func:`save_cached`.
+    """
+    cache_file = workdir / CACHE_FILENAME
+    if not cache_file.is_file():
         return None
     try:
-        return Transcript.model_validate(payload.get("transcript"))
-    except ValueError:
+        payload = json.loads(cache_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
         return None
+    return _transcript_from_payload(payload)
 
 
 def save_cached(workdir: Path, key: str, transcript: Transcript) -> Path:

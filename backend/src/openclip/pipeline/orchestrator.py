@@ -2,7 +2,9 @@
 
 import json
 import logging
+import shutil
 import threading
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 
@@ -13,6 +15,7 @@ from openclip.core.config import Settings
 from openclip.core.errors import ConfigError, OpenClipError
 from openclip.core.models import (
     Clip,
+    CropKeyframe,
     CropPath,
     Job,
     JobError,
@@ -25,6 +28,7 @@ from openclip.ingest import ingest as run_ingest
 from openclip.pipeline import store
 from openclip.pipeline.queue import EventBus, JobQueue
 from openclip.transcribe import transcribe as run_transcribe
+from openclip.transcribe.cache import load_cached_transcript
 
 log = logging.getLogger(__name__)
 
@@ -63,7 +67,15 @@ class Pipeline:
         self.settings = settings or Settings()
         self.bus = EventBus()
         self.queue = JobQueue(self._run_guarded)
+        self._rerender_locks: dict[tuple[str, str], threading.Lock] = {}
+        self._rerender_locks_guard = threading.Lock()
         store.mark_interrupted(self.settings)
+
+    def clip_rerender_lock(self, job_id: str, clip_id: str) -> threading.Lock:
+        """Return the per-clip re-render lock (callers acquire non-blocking)."""
+        key = (job_id, clip_id)
+        with self._rerender_locks_guard:
+            return self._rerender_locks.setdefault(key, threading.Lock())
 
     # -- public API ---------------------------------------------------------
 
@@ -98,28 +110,88 @@ class Pipeline:
         start: float | None,
         end: float | None,
         style_id: str | None,
+        prev_start: float | None = None,
+        prev_end: float | None = None,
     ) -> Clip:
-        """Re-run captions + render for one clip after a PATCH (background)."""
+        """Re-run captions + render for one clip after a PATCH.
+
+        All artifacts are rendered into a temporary directory and moved into
+        place only on success, so a failed re-render keeps the previous files.
+        Publishes ``clip_ready`` on success and a clip-scoped ``error`` event
+        on failure.
+
+        ``prev_start``/``prev_end`` are the clip bounds *before* the PATCH was
+        applied (the API persists the new bounds before this runs in the
+        background); they are needed to retime the crop trajectory.
+        """
         job = store.load_job(self.settings, job_id)
         if job is None:
             raise OpenClipError(f"Job '{job_id}' not found.")
         clip = next((c for c in job.clips if c.id == clip_id), None)
         if clip is None:
             raise OpenClipError(f"Clip '{clip_id}' not found in job '{job_id}'.")
+        old_start = prev_start if prev_start is not None else clip.start
+        old_end = prev_end if prev_end is not None else clip.end
         if start is not None:
             clip.start = start
         if end is not None:
             clip.end = end
         workdir = store.job_dir(self.settings, job_id)
         media = MediaInfo.model_validate_json((workdir / "media.json").read_text())
-        transcript = Transcript.model_validate_json((workdir / "transcript.json").read_text())
-        crop = CropPath.model_validate_json((workdir / f"crop-{clip_id}.json").read_text())
+        transcript = load_cached_transcript(workdir)
+        if transcript is None:
+            raise OpenClipError("Cached transcript is missing or unreadable.")
+        crop_file = workdir / f"crop-{clip_id}.json"
+        if crop_file.is_file():
+            crop = _retime_crop_path(
+                CropPath.model_validate_json(crop_file.read_text()),
+                old_start,
+                old_end,
+                clip.start,
+                clip.end,
+                media,
+            )
+        else:
+            crop = _fit_crop(media)
+        crop_file.write_text(crop.model_dump_json(indent=2))
         style_id = style_id or job.options.caption_style_id
-        style = load_presets()[style_id]
-        _render_one_clip(
-            job, clip, media, transcript, crop, style, workdir, self.settings, self.bus, cancel=None
-        )
+        presets = load_presets()
+        if style_id not in presets:
+            raise OpenClipError(f"Unknown caption style '{style_id}'.")
+        style = presets[style_id]
+
+        clip_dir = workdir / "clips" / clip_id
+        clip_dir.mkdir(parents=True, exist_ok=True)
+        tmp_dir = clip_dir / f".rerender-{uuid.uuid4().hex[:8]}"
+        tmp_dir.mkdir()
+        try:
+            _render_clip_artifacts(
+                job, clip, media, transcript, crop, style, tmp_dir, self.settings
+            )
+            for name in ("clip.mp4", "preview.mp4", "thumbnail.jpg", "captions.ass"):
+                (tmp_dir / name).replace(clip_dir / name)
+        except Exception as exc:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            self.bus.publish(
+                job_id,
+                "error",
+                {
+                    "job_id": job_id,
+                    "clip_id": clip_id,
+                    "code": getattr(exc, "code", "render_failed"),
+                    "message": str(exc),
+                },
+            )
+            raise
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        clip.output_file = str(clip_dir / "clip.mp4")
+        clip.thumbnail = str(clip_dir / "thumbnail.jpg")
         store.save_job(self.settings, job)
+        self.bus.publish(
+            job_id,
+            "clip_ready",
+            {"job_id": job_id, "clip": clip.model_dump(mode="json")},
+        )
         return clip
 
     # -- runner -------------------------------------------------------------
@@ -212,7 +284,11 @@ class Pipeline:
                     cancel,
                     progress_fn=clip_progress,
                 )
-                self.bus.publish(job.id, "clip_ready", {"clip": clip.model_dump(mode="json")})
+                self.bus.publish(
+                    job.id,
+                    "clip_ready",
+                    {"job_id": job.id, "clip": clip.model_dump(mode="json")},
+                )
                 self._save(job)
             except OpenClipError as exc:
                 clip_errors.append(f"{clip.id}: {exc}")
@@ -370,7 +446,18 @@ class Pipeline:
             if status == JobStatus.COMPLETED
             else ("error" if status == JobStatus.FAILED else "progress")
         )
-        self.bus.publish(job.id, event, _job_event(job))
+        if status == JobStatus.FAILED:
+            self.bus.publish(
+                job.id,
+                "error",
+                {
+                    "job_id": job.id,
+                    "code": error.code if error else "job_failed",
+                    "message": error.message if error else "Job failed.",
+                },
+            )
+        else:
+            self.bus.publish(job.id, event, _job_event(job))
 
 
 def _order(stage: Stage) -> int:
@@ -388,12 +475,110 @@ def _sub(progress: ProgressFn, base: float, span: float) -> ProgressFn:
 
 def _job_event(job: Job) -> dict:
     return {
-        "id": job.id,
+        "job_id": job.id,
         "status": str(job.status),
         "stage": str(job.stage) if job.stage else None,
         "progress": job.progress,
         "message": job.message,
     }
+
+
+def _fit_crop(media: MediaInfo) -> CropPath:
+    """Centered ``fit`` fallback crop path (no detector needed)."""
+    return CropPath(
+        layout="fit",
+        source_width=media.width,
+        source_height=media.height,
+        keyframes=[CropKeyframe(t=0.0, x=0, y=0, w=media.width, h=media.height)],
+    )
+
+
+def _retime_crop_path(
+    crop: CropPath,
+    old_start: float,
+    old_end: float,
+    new_start: float,
+    new_end: float,
+    media: MediaInfo,
+) -> CropPath:
+    """Shift a ``fill`` crop trajectory onto a trimmed clip range.
+
+    Keyframe ``t`` values are clip-relative, so trimming the head moves the
+    whole trajectory by ``old_start - new_start``; values are clamped into
+    the new range. Ranges reaching outside the originally tracked window
+    (beyond a small tolerance) fall back to a centered ``fit`` path.
+    """
+    duration = max(0.1, new_end - new_start)
+    if crop.layout == "fit":
+        return crop
+    if new_start < old_start - 0.5 or new_end > old_end + 0.5:
+        return _fit_crop(media)
+    shift = old_start - new_start
+    clamped = sorted(
+        (
+            CropKeyframe(
+                t=min(max(kf.t + shift, 0.0), duration),
+                x=kf.x,
+                y=kf.y,
+                w=kf.w,
+                h=kf.h,
+            )
+            for kf in crop.keyframes
+        ),
+        key=lambda k: k.t,
+    )
+    deduped: list[CropKeyframe] = []
+    for kf in clamped:
+        if deduped and abs(kf.t - deduped[-1].t) < 1e-6:
+            deduped[-1] = kf
+        else:
+            deduped.append(kf)
+    if deduped[0].t > 0.0:
+        deduped.insert(0, deduped[0].model_copy(update={"t": 0.0}))
+    if deduped[-1].t < duration:
+        deduped.append(deduped[-1].model_copy(update={"t": duration}))
+    return CropPath(
+        layout="fill",
+        source_width=crop.source_width,
+        source_height=crop.source_height,
+        keyframes=deduped,
+    )
+
+
+def _render_clip_artifacts(
+    job: Job,
+    clip: Clip,
+    media: MediaInfo,
+    transcript: Transcript,
+    crop: CropPath,
+    style,
+    clip_dir: Path,
+    settings: Settings,
+) -> None:
+    """Write captions.ass + clip.mp4 + preview.mp4 + thumbnail.jpg into clip_dir."""
+    # Heavy extras are imported lazily so the base install stays importable.
+    try:
+        from openclip.render import render_clip, render_preview, render_thumbnail  # noqa: PLC0415
+    except ImportError as exc:
+        raise ConfigError(
+            "Reframing/rendering requires extra dependencies: uv sync --extra vision"
+        ) from exc
+
+    ass_path = clip_dir / "captions.ass"
+    ass_path.write_text(build_ass(transcript, clip, style))
+    render_clip(
+        media,
+        clip,
+        crop,
+        ass_path,
+        clip_dir / "clip.mp4",
+        job.options,
+        settings=settings,
+    )
+    render_preview(
+        media, clip, crop, clip_dir / "preview.mp4", ass_path=ass_path, settings=settings
+    )
+    render_thumbnail(media, clip, clip_dir / "thumbnail.jpg", settings=settings)
 
 
 def _check_cancel(cancel: threading.Event) -> None:
@@ -461,7 +646,15 @@ def _render_one_clip(
             cancel=cancel,
         )
     if not preview_path.is_file():
-        render_preview(media, clip, crop, preview_path, settings=settings, cancel=cancel)
+        render_preview(
+            media,
+            clip,
+            crop,
+            preview_path,
+            ass_path=ass_path,
+            settings=settings,
+            cancel=cancel,
+        )
     if not thumb_path.is_file():
         render_thumbnail(media, clip, thumb_path, settings=settings, cancel=cancel)
 
