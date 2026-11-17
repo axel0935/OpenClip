@@ -47,3 +47,7 @@ Clips found on the real sample (heuristic mode, `/tmp/oc-bench-fast`):
 - /preview is now a ~360x640 proxy WITH the same burned-in captions as /video; drawer player defaults to /video with a preview toggle, fake HTML caption overlay removed (kept only in style-picker cards).
 - Contract sync: SSE payloads now carry job_id (+clip for clip_ready, +clip_id for clip-scoped errors); CONTRACTS.md + openapi.json + schema.d.ts regenerated; create_app accepts an optional pipeline for tests.
 - Validation: real 70 s job, PATCH style -> new bytes/frame (~21 s), PATCH trim +2 s -> 45.7 s 1080x1920 (~22 s), peak RSS ~0.7 GB, preview frame differs from captionless render, 409/422 verified, make check green (290+35).
+
+- Step 9 (2026-11-17): packaging — `openclip doctor [--json]` + `models download`, wheel bundles presets/fonts/licences/web (hatch hook), serve resolves OPENCLIP_WEB_DIR → `openclip/web` → `frontend/dist`; extras `asr|vision|llm|all`; Dockerfile/compose (unbuilt locally), release + docker workflows, `make build-wheel|doctor|docker-build`, README/DOCKER.md.
+- Decision: font licences moved to `assets/licenses/` (libass tries every name in fontsdir); an API-only wheel is allowed, CI stages `frontend/dist` into `openclip/web`.
+- Verified: wheel in a clean venv (8 presets, 12 TTFs, `doctor` exit 0 in 1.0 s); `make check` backend 318 tests green — pnpm absent, frontend leg skipped. Unverified: Docker build, workflows, frontend build.
