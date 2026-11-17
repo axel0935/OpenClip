@@ -1,0 +1,35 @@
+# OpenClip with Docker Compose.
+#
+#   docker compose -f docker/docker-compose.yml up --build
+#   open http://127.0.0.1:8000
+#
+# The published port is bound to the loopback interface on purpose: the UI has
+# no authentication, so it must not be reachable from the local network.
+services:
+  openclip:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: openclip:local
+    ports:
+      # host:container, loopback only.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # Models, jobs and uploads survive `docker compose down`.
+      - openclip-data:/data
+    environment:
+      OPENCLIP_DATA_DIR: /data
+      # Optional: use an Ollama instance running on the host. Uncomment both
+      # lines below to enable the LLM judge. `host-gateway` resolves to the
+      # host's address on Linux, Docker Desktop and Podman.
+      # OPENCLIP_LLM_BASE_URL: http://host.docker.internal:11434/v1
+      # OPENCLIP_LLM_MODEL: llama3.2
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # No memory limit by default: the pipeline peaks near 1.5 GB, but a long
+    # video with the quality profile needs headroom. Set one only if the host
+    # is shared, e.g. `mem_limit: 4g`.
+    restart: unless-stopped
+
+volumes:
+  openclip-data:

@@ -1,0 +1,50 @@
+# Keep the build context small: only what the Docker build actually copies.
+
+# Version control and agents
+.git
+.gitignore
+.gitattributes
+.zwork
+.github
+
+# Python
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.pyright
+**/.venv
+**/venv
+.uv-cache
+.uv-cache/**
+**/*.egg-info
+backend/dist
+build
+
+# Node and frontend
+node_modules
+**/node_modules
+frontend/dist
+.pnpm-store
+.pnpm-store/**
+coverage
+**/coverage
+
+# Local state and media (never needed in an image)
+*.mp4
+*.mkv
+*.wav
+*.mov
+data
+openclip-data
+**/models
+.env
+.env.*
+
+# Docs: the Dockerfile copies README.md and LICENSE explicitly, so the rest of
+# docs/ is excluded. Remember to add any new file you copy to the allow list.
+docs
+docs/**
+
+# Docker and CI metadata
+docker/docker-compose.yml
