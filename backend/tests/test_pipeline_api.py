@@ -248,9 +248,17 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         clip.thumbnail = str(clip_dir / "thumbnail.jpg")
 
     monkeypatch.setattr(orch, "_render_one_clip", fake_render)
+
+    def fake_artifacts(job_, clip_, media, transcript, crop, style, clip_dir, settings_):
+        clip_dir.mkdir(parents=True, exist_ok=True)
+        (clip_dir / "clip.mp4").write_bytes(b"new clip " + style.id.encode())
+        (clip_dir / "preview.mp4").write_bytes(b"new preview")
+        (clip_dir / "thumbnail.jpg").write_bytes(b"new jpg")
+        (clip_dir / "captions.ass").write_text(f"; style {style.id}")
+
+    monkeypatch.setattr(orch, "_render_clip_artifacts", fake_artifacts)
     pipe = Pipeline(settings)
-    app = create_app(settings)
-    app.state.pipeline = pipe
+    app = create_app(settings, pipeline=pipe)
     return TestClient(app), pipe, settings
 
 
@@ -345,6 +353,7 @@ def test_patch_clip_rerenders(client) -> None:
     c, pipe, settings = client
     # seed a completed job
     job = _job(settings)
+    job.options = JobOptions(min_clip_seconds=1.0, max_clip_seconds=60.0)
     job.status = JobStatus.COMPLETED
     clip = _fake_clips()[0]
     job.clips = [clip]
