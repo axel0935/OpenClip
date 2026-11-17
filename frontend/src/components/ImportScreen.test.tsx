@@ -89,7 +89,8 @@ describe("ImportScreen", () => {
     });
 
     await waitFor(() => {
-      expect(onUpload).toHaveBeenCalledWith(file);
+      // onUpload is now called with (file, progressCallback?) — check the first arg
+      expect(onUpload).toHaveBeenCalledWith(file, expect.any(Function));
     });
 
     await waitFor(() => {

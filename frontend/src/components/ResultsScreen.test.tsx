@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { ResultsScreen } from "./ResultsScreen";
 import { ToastProvider } from "./ui/toast";
@@ -57,7 +57,8 @@ describe("ResultsScreen", () => {
     );
 
     expect(screen.getByText("Test Interview Video")).toBeInTheDocument();
-    expect(screen.getByText(/6 clips/)).toBeInTheDocument();
+    // "6 clips" appears in both the visible header and the sr-only live region
+    expect(screen.getAllByText(/6 clips/).length).toBeGreaterThanOrEqual(1);
 
     // Verify clips titles
     expect(screen.getByText("The single thing that changed everything")).toBeInTheDocument();
@@ -143,7 +144,11 @@ describe("ResultsScreen", () => {
     // Check re-render button
     const reRenderButton = screen.getByRole("button", { name: /Re-render clip/i });
     expect(reRenderButton).toBeInTheDocument();
-    fireEvent.click(reRenderButton);
+    await act(async () => {
+      fireEvent.click(reRenderButton);
+      // Let the PATCH promise and the post-success timers settle.
+      await new Promise((r) => setTimeout(r, 400));
+    });
 
     expect(onUpdateClip).toHaveBeenCalledWith("clip-1", expect.objectContaining({
       start: 14.1,

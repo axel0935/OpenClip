@@ -1,6 +1,7 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { defaultApiClient, type Job, type JobCreate, type ClipUpdate } from "@/api/client";
+import { defaultApiClient, type Job, type JobCreate, type ClipUpdate, type JobStatus } from "@/api/client";
+import { ApiError, isFfmpegMissingError, isNetworkError } from "@/api/httpClient";
 import { TopBar } from "@/components/TopBar";
 import { ImportScreen } from "@/components/ImportScreen";
 import { ProcessingScreen } from "@/components/ProcessingScreen";
@@ -27,11 +28,32 @@ function getHash() {
 }
 
 function parseJobIdFromHash(hash: string): string | null {
-  const match = hash.match(/^#\/(?:jobs?\/)?([^/?]+)/);
+  const match = hash.match(/^#\/(?:jobs?\/)?([\w-]+)/);
   if (match && match[1] && match[1] !== "") {
     return match[1];
   }
   return null;
+}
+
+const JOB_STATUSES = new Set<JobStatus>([
+  "queued",
+  "running",
+  "completed",
+  "failed",
+  "cancelled",
+]);
+
+function asJobStatus(value: string | undefined): JobStatus | undefined {
+  return value !== undefined && JOB_STATUSES.has(value as JobStatus)
+    ? (value as JobStatus)
+    : undefined;
+}
+
+/** Map an error from the API to a user-facing message string. */
+function friendlyError(err: unknown): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof Error) return err.message;
+  return "An unexpected error occurred.";
 }
 
 export function MainApp() {
@@ -40,32 +62,60 @@ export function MainApp() {
   const hash = useSyncExternalStore(subscribeHash, getHash, () => "#/");
   const activeJobId = parseJobIdFromHash(hash);
 
+  // Backend-reachability state
+  const [backendUnreachable, setBackendUnreachable] = useState(false);
+
   // Queries
   const captionStylesQuery = useQuery({
     queryKey: ["caption-styles"],
     queryFn: () => defaultApiClient.listCaptionStyles(),
     staleTime: Infinity,
+    retry: 2,
   });
 
   const jobsQuery = useQuery({
     queryKey: ["jobs"],
     queryFn: () => defaultApiClient.listJobs(),
-    refetchInterval: activeJobId ? 2000 : false,
+    // Poll while a job is active so History updates
+    refetchInterval: activeJobId ? 5000 : 10000,
+    retry: 1,
+    // Detect backend unreachability
+    meta: {
+      onError: (err: unknown) => {
+        if (isNetworkError(err) || (err instanceof ApiError && err.code === "network_error")) {
+          setBackendUnreachable(true);
+        }
+      },
+    },
   });
+
+  // Track backend reachability from query failures
+  useEffect(() => {
+    if (jobsQuery.isSuccess) setBackendUnreachable(false);
+    if (jobsQuery.isError) {
+      const err = jobsQuery.error;
+      if (isNetworkError(err) || (err instanceof ApiError && err.code === "network_error")) {
+        setBackendUnreachable(true);
+      }
+    }
+  }, [jobsQuery.isSuccess, jobsQuery.isError, jobsQuery.error]);
 
   const currentJobQuery = useQuery({
     queryKey: ["job", activeJobId],
     queryFn: () => (activeJobId ? defaultApiClient.getJob(activeJobId) : null),
     enabled: Boolean(activeJobId),
+    // Slower polling — SSE is the primary real-time channel
     refetchInterval: (query) => {
       const data = query.state.data as Job | null | undefined;
-      return data?.status === "running" ? 800 : false;
+      return data?.status === "running" ? 3000 : false;
     },
+    staleTime: 1000,
   });
 
-  // SSE subscription if available
+  // SSE subscription — also covers resume when user navigates back to #/jobs/:id
   useEffect(() => {
     if (!activeJobId || !defaultApiClient.subscribeJobEvents) return;
+
     const unsub = defaultApiClient.subscribeJobEvents(
       activeJobId,
       (event) => {
@@ -76,22 +126,45 @@ export function MainApp() {
             stage: event.stage,
             progress: event.progress,
             message: event.message,
+            // Prefer the status carried by the event; fall back to inferring
+            // "running" from the first progress frame of a queued job.
+            status:
+              asJobStatus(event.status) ??
+              (prev.status === "queued" ? "running" : prev.status),
           };
         });
+        // Reset backend-unreachable when SSE is working
+        setBackendUnreachable(false);
       },
       (clip) => {
+        // clip_ready — add to the job's clips array immediately
         queryClient.setQueryData(["job", activeJobId], (prev: Job | undefined) => {
           if (!prev) return prev;
-          const currentClips = prev.clips ?? [];
+          const existing = prev.clips ?? [];
+          // Avoid duplicates if the clip was already added by a poll
+          if (existing.some((c) => c.id === clip.id)) return prev;
           return {
             ...prev,
-            clips: [...currentClips, clip],
+            clips: [...existing, clip],
           };
         });
       },
       () => {
-        queryClient.invalidateQueries({ queryKey: ["job", activeJobId] });
-        queryClient.invalidateQueries({ queryKey: ["jobs"] });
+        // done — invalidate to get the final completed state
+        void queryClient.invalidateQueries({ queryKey: ["job", activeJobId] });
+        void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      },
+      (error) => {
+        // SSE error event from server (not a connection error)
+        queryClient.setQueryData(["job", activeJobId], (prev: Job | undefined) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            status: "failed",
+            error,
+          };
+        });
+        void queryClient.invalidateQueries({ queryKey: ["jobs"] });
       },
     );
     return () => unsub();
@@ -102,20 +175,41 @@ export function MainApp() {
     mutationFn: (jobCreate: JobCreate) => defaultApiClient.createJob(jobCreate),
     onSuccess: (newJob) => {
       queryClient.setQueryData(["job", newJob.id], newJob);
-      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
       navigateTo(`#/jobs/${newJob.id}`);
     },
-    onError: (err: Error) => {
-      toast(err.message || "Failed to start job", "destructive");
+    onError: (err: unknown) => {
+      const msg = friendlyError(err);
+      toast(
+        isFfmpegMissingError(err)
+          ? 'FFmpeg is not installed. Run `openclip doctor` in a terminal.'
+          : msg,
+        "destructive",
+      );
     },
   });
 
   const cancelJobMutation = useMutation({
     mutationFn: (jobId: string) => defaultApiClient.deleteJob(jobId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["job", activeJobId] });
-      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      void queryClient.invalidateQueries({ queryKey: ["job", activeJobId] });
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
       toast("Job cancelled");
+    },
+    onError: (err: unknown) => {
+      toast(friendlyError(err), "destructive");
+    },
+  });
+
+  const deleteJobMutation = useMutation({
+    mutationFn: (jobId: string) => defaultApiClient.deleteJob(jobId),
+    onSuccess: (_data, jobId) => {
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      if (jobId === activeJobId) navigateTo("#/");
+      toast("Job deleted");
+    },
+    onError: (err: unknown) => {
+      toast(friendlyError(err), "destructive");
     },
   });
 
@@ -130,25 +224,23 @@ export function MainApp() {
         const nextClips = (prev.clips ?? []).map((c) =>
           c.id === updatedClip.id ? updatedClip : c,
         );
-        return {
-          ...prev,
-          clips: nextClips,
-        };
+        return { ...prev, clips: nextClips };
       });
+      // The backend re-renders in the background; refetch so any server-side
+      // clip fields (output_file, thumbnail) are refreshed.
+      void queryClient.invalidateQueries({ queryKey: ["job", activeJobId] });
+    },
+    onError: (err: unknown) => {
+      toast(friendlyError(err), "destructive");
     },
   });
 
-  const handleNewVideo = () => {
-    navigateTo("#/");
-  };
-
-  const handleSelectJob = (id: string) => {
-    navigateTo(`#/jobs/${id}`);
-  };
+  const handleNewVideo = () => navigateTo("#/");
+  const handleSelectJob = (id: string) => navigateTo(`#/jobs/${id}`);
 
   const currentJob = currentJobQuery.data;
-  const allJobs = jobsQuery.data || [];
-  const captionStyles = captionStylesQuery.data || [];
+  const allJobs = jobsQuery.data ?? [];
+  const captionStyles = captionStylesQuery.data ?? [];
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground antialiased selection:bg-primary selection:text-primary-foreground">
@@ -160,12 +252,28 @@ export function MainApp() {
         Skip to content
       </a>
 
+      {/* Backend unreachable banner */}
+      {backendUnreachable && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="sticky top-0 z-50 flex items-center justify-center gap-2 bg-destructive px-4 py-2 text-xs font-medium text-white"
+        >
+          <span>Cannot reach OpenClip. Is <code>openclip serve</code> running?</span>
+          {isFfmpegMissingError(jobsQuery.error) && (
+            <span className="ml-2 opacity-80">· Run <code>openclip doctor</code> for details.</span>
+          )}
+        </div>
+      )}
+
       {/* Top Header Navigation */}
       <TopBar
         jobs={allJobs}
         currentJobId={activeJobId}
         onSelectJob={handleSelectJob}
         onNewVideo={handleNewVideo}
+        backendUnreachable={backendUnreachable}
+        onDeleteJob={(jobId) => deleteJobMutation.mutate(jobId)}
       />
 
       {/* Main Dynamic Viewport */}
@@ -174,7 +282,9 @@ export function MainApp() {
           <ImportScreen
             captionStyles={captionStyles}
             onSubmit={(req) => createJobMutation.mutate(req)}
-            onUploadFile={(file) => defaultApiClient.createUpload(file)}
+            onUploadFile={(file, onProgress) =>
+              defaultApiClient.createUpload(file, onProgress)
+            }
             isSubmitting={createJobMutation.isPending}
           />
         ) : currentJob.status === "completed" ? (

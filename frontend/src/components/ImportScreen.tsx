@@ -20,7 +20,11 @@ import type { CaptionStyle, JobCreate, JobOptions } from "@/api/client";
 interface ImportScreenProps {
   captionStyles: CaptionStyle[];
   onSubmit: (jobCreate: JobCreate) => void;
-  onUploadFile: (file: File) => Promise<{ upload_id: string; filename: string; size_bytes: number }>;
+  /** Accepts an optional progress callback (0–100) for XHR upload progress. */
+  onUploadFile: (
+    file: File,
+    onProgress?: (pct: number) => void,
+  ) => Promise<{ upload_id: string; filename: string; size_bytes: number }>;
   isSubmitting?: boolean;
 }
 
@@ -111,21 +115,13 @@ export function ImportScreen({
       return;
     }
 
-    // Simulate fast local copy progress
-    setUploadProgress(10);
-    const interval = setInterval(() => {
-      setUploadProgress((p) => {
-        if (!p || p >= 90) {
-          clearInterval(interval);
-          return 90;
-        }
-        return p + 25;
-      });
-    }, 120);
+    // Show real upload progress (the callback comes from XHR in http mode)
+    setUploadProgress(5);
 
     try {
-      const resp = await onUploadFile(file);
-      clearInterval(interval);
+      const resp = await onUploadFile(file, (pct) => {
+        setUploadProgress(Math.max(5, pct));
+      });
       setUploadProgress(100);
       setTimeout(() => {
         setUploadProgress(null);
@@ -140,7 +136,6 @@ export function ImportScreen({
         }
       }, 200);
     } catch {
-      clearInterval(interval);
       setUploadProgress(null);
       setDropError("Failed to copy video file.");
     }

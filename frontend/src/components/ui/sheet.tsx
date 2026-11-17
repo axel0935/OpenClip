@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +21,9 @@ export function Sheet({
   description,
   className,
 }: SheetProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<Element | null>(null);
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape" && open) {
@@ -30,12 +33,48 @@ export function Sheet({
     if (open) {
       document.body.style.overflow = "hidden";
       window.addEventListener("keydown", handleKeyDown);
+
+      // Move focus into the dialog and remember where to return it.
+      restoreFocusRef.current = document.activeElement;
+      panelRef.current?.focus();
     }
     return () => {
       document.body.style.overflow = "";
       window.removeEventListener("keydown", handleKeyDown);
+      const prev = restoreFocusRef.current;
+      if (prev instanceof HTMLElement) prev.focus();
+      restoreFocusRef.current = null;
     };
   }, [open, onOpenChange]);
+
+  // Keep Tab focus cycling inside the dialog while it is open.
+  useEffect(() => {
+    if (!open) return;
+    function trapTab(e: KeyboardEvent) {
+      if (e.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusables = panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === panel)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    window.addEventListener("keydown", trapTab);
+    return () => window.removeEventListener("keydown", trapTab);
+  }, [open]);
 
   if (!open) return null;
 
@@ -50,8 +89,10 @@ export function Sheet({
 
       {/* Sheet Content */}
       <div
+        ref={panelRef}
+        tabIndex={-1}
         className={cn(
-          "relative z-50 flex flex-col bg-card border-border p-6 shadow-2xl transition-transform duration-200 ease-out",
+          "relative z-50 flex flex-col bg-card border-border p-6 shadow-2xl transition-transform duration-200 ease-out outline-none",
           side === "right" &&
             "ml-auto h-full w-full max-w-md border-l animate-in slide-in-from-right",
           side === "bottom" &&

@@ -6,6 +6,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import type { Job, Stage } from "@/api/client";
+import { isFfmpegMissingCode } from "@/api/httpClient";
 
 interface ProcessingScreenProps {
   job: Job;
@@ -162,6 +163,12 @@ export function ProcessingScreen({ job, onCancel, onRetry }: ProcessingScreenPro
           <p className="mt-1 text-muted-foreground">
             {job.error?.message || "An unexpected error occurred while processing this video."}
           </p>
+          {isFfmpegMissingCode(job.error?.code) && (
+            <p className="mt-2 text-foreground">
+              Run <code className="rounded bg-muted px-1 py-0.5 font-mono">openclip doctor</code> in a
+              terminal to diagnose your FFmpeg installation.
+            </p>
+          )}
           <div className="mt-4 flex gap-3">
             {onRetry && (
               <Button

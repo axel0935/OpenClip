@@ -1,3 +1,9 @@
+/**
+ * HttpApiClient — connects the UI to the real OpenClip backend.
+ *
+ * Error handling: every non-2xx response is parsed as ErrorResponse{code,message}
+ * and thrown as ApiError. UI_SPEC §8 messages are applied for known codes.
+ */
 import type {
   ApiClient,
   CaptionStyle,
@@ -11,33 +17,104 @@ import type {
   UploadResponse,
 } from "./client";
 
+// ── Error types ───────────────────────────────────────────────────────────────
+
+/** UI_SPEC §8 error messages keyed by backend error code. */
+const UI_ERROR_MESSAGES: Record<string, string> = {
+  no_speech:
+    "No speech found in this video. OpenClip needs words to cut clips.",
+  ffmpeg_missing:
+    "FFmpeg is not installed. Run `openclip doctor` in a terminal.",
+  disk_full: "Not enough space in the data folder. Free 2 GB and retry.",
+  unsupported_format:
+    "OpenClip reads MP4, MOV, MKV, WebM and M4V. Convert this file first.",
+  not_implemented: "This feature is not yet available in this build.",
+};
+
+export class ApiError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly httpStatus?: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+/** Returns true when the error code suggests FFmpeg is missing. */
+export function isFfmpegMissingError(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "ffmpeg_missing";
+}
+
+/** Returns true when a backend error/job code suggests FFmpeg is missing. */
+export function isFfmpegMissingCode(code: string | null | undefined): boolean {
+  return code === "ffmpeg_missing";
+}
+
+/** Returns true when the backend is completely unreachable (network error). */
+export function isNetworkError(err: unknown): boolean {
+  return (
+    err instanceof TypeError && err.message.toLowerCase().includes("fetch")
+  );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function mapErrorResponse(code: string, rawMessage: string): string {
+  return UI_ERROR_MESSAGES[code] ?? rawMessage;
+}
+
+async function parseErrorResponse(response: Response): Promise<ApiError> {
+  let code = "unknown";
+  let message = `Request failed: ${response.status} ${response.statusText}`;
+  try {
+    const body = (await response.json()) as {
+      code?: string;
+      message?: string;
+      detail?: string;
+    };
+    if (body.code) code = body.code;
+    if (body.message) message = mapErrorResponse(code, body.message);
+    else if (body.detail) message = body.detail;
+  } catch {
+    // keep defaults
+  }
+  return new ApiError(code, message, response.status);
+}
+
+// ── Client ────────────────────────────────────────────────────────────────────
+
 export class HttpApiClient implements ApiClient {
-  private baseUrl: string;
+  private readonly baseUrl: string;
 
   constructor(baseUrl: string = "") {
     this.baseUrl = baseUrl;
   }
 
+  // ── Core fetch helper ──────────────────────────────────────────────────────
+
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const response = await fetch(url, {
-      ...init,
-      headers: {
-        Accept: "application/json",
-        ...init?.headers,
-      },
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...init,
+        headers: {
+          Accept: "application/json",
+          ...init?.headers,
+        },
+      });
+    } catch {
+      // Network-level failure (backend not running, CORS, etc.)
+      throw new ApiError(
+        "network_error",
+        "Cannot reach OpenClip. Is `openclip serve` running?",
+      );
+    }
 
     if (!response.ok) {
-      let errorMsg = `Request failed: ${response.status} ${response.statusText}`;
-      try {
-        const errorJson = (await response.json()) as { message?: string; detail?: string };
-        if (errorJson.message) errorMsg = errorJson.message;
-        else if (errorJson.detail) errorMsg = errorJson.detail;
-      } catch {
-        // use fallback
-      }
-      throw new Error(errorMsg);
+      throw await parseErrorResponse(response);
     }
 
     if (response.status === 204) {
@@ -47,6 +124,8 @@ export class HttpApiClient implements ApiClient {
     return (await response.json()) as T;
   }
 
+  // ── API methods ────────────────────────────────────────────────────────────
+
   async getHealth(): Promise<HealthResponse> {
     return this.request<HealthResponse>("/health");
   }
@@ -55,20 +134,57 @@ export class HttpApiClient implements ApiClient {
     return this.request<CaptionStyle[]>("/api/caption-styles");
   }
 
-  async createUpload(file: File): Promise<UploadResponse> {
-    const formData = new FormData();
-    formData.append("file", file);
+  /**
+   * Upload a file with XHR so we get real upload progress (0–100).
+   * onProgress is optional and called with percentage values.
+   */
+  createUpload(
+    file: File,
+    onProgress?: (pct: number) => void,
+  ): Promise<UploadResponse> {
+    return new Promise<UploadResponse>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${this.baseUrl}/api/uploads`);
+      xhr.responseType = "json";
 
-    const response = await fetch(`${this.baseUrl}/api/uploads`, {
-      method: "POST",
-      body: formData,
+      if (onProgress) {
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            onProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        });
+      }
+
+      xhr.addEventListener("load", () => {
+        if (xhr.status === 201 || xhr.status === 200) {
+          resolve(xhr.response as UploadResponse);
+        } else {
+          let code = "upload_failed";
+          let msg = `Upload failed with status ${xhr.status}`;
+          try {
+            const body = xhr.response as { code?: string; message?: string };
+            if (body.code) code = body.code;
+            if (body.message) msg = mapErrorResponse(code, body.message);
+          } catch {
+            // keep defaults
+          }
+          reject(new ApiError(code, msg, xhr.status));
+        }
+      });
+
+      xhr.addEventListener("error", () => {
+        reject(
+          new ApiError(
+            "network_error",
+            "Cannot reach OpenClip. Is `openclip serve` running?",
+          ),
+        );
+      });
+
+      const form = new FormData();
+      form.append("file", file);
+      xhr.send(form);
     });
-
-    if (!response.ok) {
-      throw new Error(`Upload failed with status ${response.status}`);
-    }
-
-    return (await response.json()) as UploadResponse;
   }
 
   async createJob(jobCreate: JobCreate): Promise<Job> {
@@ -93,7 +209,11 @@ export class HttpApiClient implements ApiClient {
     });
   }
 
-  async updateClip(jobId: string, clipId: string, update: ClipUpdate): Promise<Clip> {
+  async updateClip(
+    jobId: string,
+    clipId: string,
+    update: ClipUpdate,
+  ): Promise<Clip> {
     return this.request<Clip>(
       `/api/jobs/${encodeURIComponent(jobId)}/clips/${encodeURIComponent(clipId)}`,
       {
@@ -103,6 +223,8 @@ export class HttpApiClient implements ApiClient {
       },
     );
   }
+
+  // ── URL helpers ────────────────────────────────────────────────────────────
 
   getVideoUrl(jobId: string, clipId: string): string {
     return `${this.baseUrl}/api/jobs/${encodeURIComponent(jobId)}/clips/${encodeURIComponent(clipId)}/video`;
@@ -124,6 +246,8 @@ export class HttpApiClient implements ApiClient {
     return `${this.baseUrl}/api/jobs/${encodeURIComponent(jobId)}/download.zip`;
   }
 
+  // ── SSE subscription with auto-reconnect and polling fallback ─────────────
+
   subscribeJobEvents(
     jobId: string,
     onProgress: (event: JobProgressEvent) => void,
@@ -131,58 +255,144 @@ export class HttpApiClient implements ApiClient {
     onDone?: () => void,
     onError?: (error: JobError) => void,
   ): () => void {
-    const eventSource = new EventSource(
-      `${this.baseUrl}/api/jobs/${encodeURIComponent(jobId)}/events`,
-    );
+    // Capture baseUrl as a local constant for all closures
+    const baseUrl = this.baseUrl;
 
-    eventSource.addEventListener("progress", (e) => {
-      try {
-        const data = JSON.parse(e.data) as JobProgressEvent;
-        onProgress(data);
-      } catch {
-        // ignore malformed
+    let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let closed = false;
+    let consecutiveErrors = 0;
+
+    const POLL_INTERVAL_MS = 1500;
+    const MAX_SSE_ERRORS = 3; // fall back to polling after this many errors
+
+    function cleanup(): void {
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      if (pollTimer !== null) clearTimeout(pollTimer);
+      reconnectTimer = null;
+      pollTimer = null;
+      if (es) {
+        es.close();
+        es = null;
       }
-    });
+    }
 
-    if (onClipReady) {
-      eventSource.addEventListener("clip_ready", (e) => {
+    // ── Polling fallback (used after repeated SSE failures) ──────────────────
+    function startPolling(): void {
+      if (closed) return;
+      function poll(): void {
+        if (closed) return;
+        fetch(`${baseUrl}/api/jobs/${encodeURIComponent(jobId)}`, {
+          headers: { Accept: "application/json" },
+        })
+          .then((r) => r.json())
+          .then((job: Job) => {
+            if (closed) return;
+            onProgress({
+              job_id: jobId,
+              stage: job.stage ?? "ingest",
+              progress: job.progress ?? 0,
+              message: job.message ?? "",
+            });
+            if (job.status === "completed") {
+              (job.clips ?? []).forEach((c) => onClipReady?.(c));
+              onDone?.();
+              cleanup();
+              return;
+            }
+            if (job.status === "failed") {
+              onError?.(job.error ?? { code: "unknown", message: "Job failed" });
+              cleanup();
+              return;
+            }
+            pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+          })
+          .catch(() => {
+            if (!closed) pollTimer = setTimeout(poll, POLL_INTERVAL_MS * 2);
+          });
+      }
+      pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+    }
+
+    // ── SSE connection ────────────────────────────────────────────────────────
+    function connect(): void {
+      if (closed) return;
+      es = new EventSource(
+        `${baseUrl}/api/jobs/${encodeURIComponent(jobId)}/events`,
+      );
+
+      es.addEventListener("progress", (e: MessageEvent) => {
+        consecutiveErrors = 0;
         try {
-          const data = JSON.parse(e.data) as Clip;
-          onClipReady(data);
+          const data = JSON.parse(e.data) as JobProgressEvent;
+          onProgress(data);
         } catch {
-          // ignore
+          // ignore malformed events
         }
       });
-    }
 
-    if (onDone) {
-      eventSource.addEventListener("done", () => {
-        onDone();
-        eventSource.close();
-      });
-    }
-
-    if (onError) {
-      eventSource.addEventListener("error", (e) => {
+      es.addEventListener("clip_ready", (e: MessageEvent) => {
+        consecutiveErrors = 0;
         try {
-          // @ts-expect-error SSE message data
-          if (e.data) {
-            // @ts-expect-error SSE message data
-            const err = JSON.parse(e.data) as JobError;
-            onError(err);
+          const payload = JSON.parse(e.data) as unknown;
+          // The backend wraps the clip: {"clip": {...}}. Tolerate a bare Clip too.
+          const clip = (
+            payload !== null &&
+            typeof payload === "object" &&
+            "clip" in payload
+              ? (payload as { clip: Clip }).clip
+              : payload
+          ) as Clip;
+          if (clip && typeof clip.id === "string") {
+            onClipReady?.(clip);
           }
         } catch {
           // ignore
         }
       });
+
+      es.addEventListener("done", () => {
+        consecutiveErrors = 0;
+        onDone?.();
+        cleanup();
+      });
+
+      // Named "error" event from the server (not a connection error)
+      es.addEventListener("error", (e: MessageEvent) => {
+        try {
+          if (e.data) {
+            const err = JSON.parse(e.data) as JobError;
+            onError?.(err);
+          }
+        } catch {
+          // ignore
+        }
+        cleanup();
+      });
+
+      // Connection-level error (network drop, backend restart, etc.)
+      es.onerror = () => {
+        consecutiveErrors++;
+        es?.close();
+        es = null;
+        if (closed) return;
+        if (consecutiveErrors >= MAX_SSE_ERRORS) {
+          // SSE seems persistently broken — fall back to polling
+          startPolling();
+          return;
+        }
+        // Exponential back-off reconnect
+        const backoff = Math.min(500 * 2 ** consecutiveErrors, 8000);
+        reconnectTimer = setTimeout(connect, backoff);
+      };
     }
 
-    eventSource.onerror = () => {
-      eventSource.close();
-    };
+    connect();
 
     return () => {
-      eventSource.close();
+      closed = true;
+      cleanup();
     };
   }
 }

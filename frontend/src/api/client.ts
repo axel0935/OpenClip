@@ -16,17 +16,24 @@ export type MediaInfo = components["schemas"]["MediaInfo"];
 export type JobOptions = components["schemas"]["JobOptions"];
 export type JobSource = components["schemas"]["JobSource"];
 
+/**
+ * Progress event payload. The HTTP backend sends `_job_event` shape
+ * ({id, status, stage, progress, message}); the contract doc and the mock
+ * client use `job_id`. All fields are optional-tolerant so both work.
+ */
 export interface JobProgressEvent {
-  job_id: string;
-  stage: Stage;
+  job_id?: string;
+  id?: string;
+  status?: string;
+  stage: Stage | null;
   progress: number;
-  message: string;
+  message: string | null;
 }
 
 export interface ApiClient {
   getHealth(): Promise<HealthResponse>;
   listCaptionStyles(): Promise<CaptionStyle[]>;
-  createUpload(file: File): Promise<UploadResponse>;
+  createUpload(file: File, onProgress?: (pct: number) => void): Promise<UploadResponse>;
   createJob(jobCreate: JobCreate): Promise<Job>;
   listJobs(): Promise<Job[]>;
   getJob(jobId: string): Promise<Job>;
@@ -46,7 +53,8 @@ export interface ApiClient {
   ): () => void;
 }
 
-const apiMode = import.meta.env.VITE_API_MODE;
+// Default to "http" (real backend). Use VITE_API_MODE=mock for demos/tests.
+const apiMode = import.meta.env.VITE_API_MODE ?? "http";
 
 export const defaultApiClient: ApiClient =
-  apiMode === "http" ? new HttpApiClient() : new MockApiClient();
+  apiMode === "mock" ? new MockApiClient() : new HttpApiClient();

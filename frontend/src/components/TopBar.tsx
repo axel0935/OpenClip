@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { History, Settings, Sun, Moon, Monitor, Video, CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import { History, Settings, Sun, Moon, Monitor, Video, CheckCircle2, Clock, AlertCircle, Trash2, WifiOff } from "lucide-react";
 import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,11 +11,14 @@ interface TopBarProps {
   currentJobId?: string | null;
   onSelectJob: (jobId: string) => void;
   onNewVideo: () => void;
+  /** When true the history drawer shows a "backend unreachable" notice. */
+  backendUnreachable?: boolean;
+  onDeleteJob?: (jobId: string) => void;
 }
 
 type Theme = "dark" | "light" | "system";
 
-export function TopBar({ jobs, currentJobId, onSelectJob, onNewVideo }: TopBarProps) {
+export function TopBar({ jobs, currentJobId, onSelectJob, onNewVideo, backendUnreachable = false, onDeleteJob }: TopBarProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => {
@@ -113,6 +116,23 @@ export function TopBar({ jobs, currentJobId, onSelectJob, onNewVideo }: TopBarPr
         description="Videos processed on this machine during this session."
       >
         <div className="mt-4 flex flex-col gap-3">
+          {/* Backend unreachable notice */}
+          {backendUnreachable && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+            >
+              <WifiOff className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold">Cannot reach OpenClip.</p>
+                <p className="text-muted-foreground mt-0.5">
+                  Is <code>openclip serve</code> running? Run{" "}
+                  <code>openclip doctor</code> to diagnose.
+                </p>
+              </div>
+            </div>
+          )}
+
           {jobs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Video className="h-10 w-10 text-muted-foreground/40 stroke-1 mb-3" />
@@ -132,7 +152,7 @@ export function TopBar({ jobs, currentJobId, onSelectJob, onNewVideo }: TopBarPr
           ) : (
             <>
               <div className="flex justify-between items-center pb-2">
-                <span className="text-xs text-muted-foreground">{jobs.length} jobs in session</span>
+                <span className="text-xs text-muted-foreground">{jobs.length} jobs</span>
                 <Button
                   variant="outline"
                   size="sm"
@@ -149,56 +169,77 @@ export function TopBar({ jobs, currentJobId, onSelectJob, onNewVideo }: TopBarPr
                 {jobs.map((job) => {
                   const isCurrent = job.id === currentJobId;
                   const title = job.media?.title || job.source.value;
+                  const dateLabel = new Date(job.created_at).toLocaleString([], {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
 
                   return (
-                    <button
-                      key={job.id}
-                      type="button"
-                      onClick={() => {
-                        setHistoryOpen(false);
-                        onSelectJob(job.id);
-                      }}
-                      className={`flex flex-col rounded-lg border p-3 text-left transition-colors ${
-                        isCurrent
-                          ? "border-primary bg-muted/60"
-                          : "border-border bg-card/60 hover:bg-muted/40 hover:border-foreground/20"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-medium text-foreground max-w-[220px]">
-                          {title}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          {job.status === "completed" && (
-                            <Badge variant="success" className="text-[10px] gap-1 px-1.5 py-0">
-                              <CheckCircle2 className="h-3 w-3" />
-                              <span>{job.clips?.length ?? 0} clips</span>
-                            </Badge>
-                          )}
-                          {job.status === "running" && (
-                            <Badge variant="warning" className="text-[10px] gap-1 px-1.5 py-0">
-                              <Clock className="h-3 w-3 animate-spin" />
-                              <span>{Math.round(job.progress * 100)}%</span>
-                            </Badge>
-                          )}
-                          {job.status === "failed" && (
-                            <Badge variant="destructive" className="text-[10px] gap-1 px-1.5 py-0">
-                              <AlertCircle className="h-3 w-3" />
-                              <span>Failed</span>
-                            </Badge>
-                          )}
-                          {job.status === "cancelled" && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                              Cancelled
-                            </Badge>
-                          )}
+                    <div key={job.id} className="relative group">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHistoryOpen(false);
+                          onSelectJob(job.id);
+                        }}
+                        className={`flex w-full flex-col rounded-lg border p-3 text-left transition-colors ${
+                          isCurrent
+                            ? "border-primary bg-muted/60"
+                            : "border-border bg-card/60 hover:bg-muted/40 hover:border-foreground/20"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2 pr-6">
+                          <span className="truncate text-sm font-medium text-foreground max-w-[200px]">
+                            {title}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {job.status === "completed" && (
+                              <Badge variant="success" className="text-[10px] gap-1 px-1.5 py-0">
+                                <CheckCircle2 className="h-3 w-3" />
+                                <span>{job.clips?.length ?? 0} clips</span>
+                              </Badge>
+                            )}
+                            {job.status === "running" && (
+                              <Badge variant="warning" className="text-[10px] gap-1 px-1.5 py-0">
+                                <Clock className="h-3 w-3 animate-spin" />
+                                <span>{Math.round(job.progress * 100)}%</span>
+                              </Badge>
+                            )}
+                            {job.status === "failed" && (
+                              <Badge variant="destructive" className="text-[10px] gap-1 px-1.5 py-0">
+                                <AlertCircle className="h-3 w-3" />
+                                <span>Failed</span>
+                              </Badge>
+                            )}
+                            {job.status === "cancelled" && (
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                Cancelled
+                              </Badge>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                        <span className="font-mono text-[11px]">{job.id}</span>
-                        <span>{new Date(job.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                      </div>
-                    </button>
+                        <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                          <span className="font-mono text-[11px]">{job.id.slice(0, 16)}…</span>
+                          <span>{dateLabel}</span>
+                        </div>
+                      </button>
+                      {/* Delete button (only for non-running jobs) */}
+                      {onDeleteJob && job.status !== "running" && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteJob(job.id);
+                          }}
+                          className="absolute right-2 top-2.5 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 focus:opacity-100"
+                          aria-label={`Delete job ${job.id}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>

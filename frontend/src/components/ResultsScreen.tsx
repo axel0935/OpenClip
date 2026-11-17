@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import {
   Download,
   Plus,
@@ -10,6 +10,8 @@ import {
   Scissors,
   Clock,
   RotateCcw,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +19,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
 import type { CaptionStyle, Clip, ClipUpdate, Job } from "@/api/client";
+import { defaultApiClient } from "@/api/client";
 import { CaptionStylePreview } from "./CaptionStylePicker";
 
 interface ResultsScreenProps {
@@ -47,11 +50,24 @@ export function ResultsScreen({
   const [isReRendering, setIsReRendering] = useState(false);
   const [reRenderProgress, setReRenderProgress] = useState(0);
 
+  // Cache-busting token incremented after each re-render
+  const [mediaCacheBust, setMediaCacheBust] = useState<Record<string, number>>({});
+
+  // Video player preview toggle (preview proxy vs final render)
+  const [usePreviewProxy, setUsePreviewProxy] = useState(true);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+
   // Download all state
   const [isDownloadingZip, setIsDownloadingZip] = useState(false);
-  const [downloadZipProgress, setDownloadZipProgress] = useState(0);
 
   const clips = useMemo(() => job.clips || [], [job.clips]);
+
+  const cacheBust = useCallback(
+    (clipId: string) =>
+      mediaCacheBust[clipId] ? `?v=${mediaCacheBust[clipId]}` : "",
+    [mediaCacheBust],
+  );
 
   const handleSelectClip = (clip: Clip) => {
     setSelectedClip(clip);
@@ -59,6 +75,7 @@ export function ResultsScreen({
     setTrimEnd(clip.end);
     setIsReRendering(false);
     setReRenderProgress(0);
+    setUsePreviewProxy(true);
   };
 
   // Sorting
@@ -68,9 +85,9 @@ export function ResultsScreen({
       case "score_desc":
         return list.sort((a, b) => b.score - a.score);
       case "duration_desc":
-        return list.sort((a, b) => (b.end - b.start) - (a.end - a.start));
+        return list.sort((a, b) => b.end - b.start - (a.end - a.start));
       case "duration_asc":
-        return list.sort((a, b) => (a.end - a.start) - (b.end - b.start));
+        return list.sort((a, b) => a.end - a.start - (b.end - b.start));
       case "source_order":
         return list.sort((a, b) => a.start - b.start);
       default:
@@ -93,58 +110,50 @@ export function ResultsScreen({
   };
 
   const getScoreBadge = (score: number) => {
-    if (score >= 70) {
-      return {
-        variant: "scoreHigh" as const,
-        tier: "Strong",
-      };
-    }
-    if (score >= 40) {
-      return {
-        variant: "scoreMedium" as const,
-        tier: "Good",
-      };
-    }
-    return {
-      variant: "scoreLow" as const,
-      tier: "Fair",
-    };
+    if (score >= 70) return { variant: "scoreHigh" as const, tier: "Strong" };
+    if (score >= 40) return { variant: "scoreMedium" as const, tier: "Good" };
+    return { variant: "scoreLow" as const, tier: "Fair" };
   };
+
+  const minClip = job.options?.min_clip_seconds ?? 20;
+  const maxClip = job.options?.max_clip_seconds ?? 90;
 
   const handleNudgeStart = (delta: number) => {
     setTrimStart((s) => {
       const next = Math.max(0, Math.round((s + delta) * 10) / 10);
-      if (next >= trimEnd - 5) return s;
+      if (next >= trimEnd - minClip) return s;
       return next;
     });
   };
 
   const handleNudgeEnd = (delta: number) => {
     setTrimEnd((e) => {
-      const maxLimit = (job.media?.duration || 3600);
+      const maxLimit = job.media?.duration || 3600;
       const next = Math.min(maxLimit, Math.round((e + delta) * 10) / 10);
-      if (next <= trimStart + 5) return e;
+      if (next <= trimStart + minClip) return e;
       return next;
     });
   };
 
   const currentClipDuration = Math.round((trimEnd - trimStart) * 10) / 10;
-  const isShortWarning = currentClipDuration < 20;
+  const isShortWarning = currentClipDuration < minClip;
+  const isLongWarning = currentClipDuration > maxClip;
 
   const handleReRender = async () => {
     if (!selectedClip) return;
     setIsReRendering(true);
-    setReRenderProgress(10);
+    setReRenderProgress(5);
 
+    // Animate progress bar up to 90% while waiting for the server
     const interval = setInterval(() => {
       setReRenderProgress((p) => {
-        if (p >= 90) {
+        if (p >= 85) {
           clearInterval(interval);
-          return 90;
+          return 85;
         }
-        return p + 25;
+        return p + 10;
       });
-    }, 200);
+    }, 1500);
 
     try {
       const updated = await onUpdateClip(selectedClip.id, {
@@ -154,9 +163,23 @@ export function ResultsScreen({
       });
       clearInterval(interval);
       setReRenderProgress(100);
+
+      // Bump cache-buster so thumbnail/video reload, then again after a delay:
+      // the backend re-renders clips in the background after the PATCH returns.
+      setMediaCacheBust((prev) => ({
+        ...prev,
+        [selectedClip.id]: Date.now(),
+      }));
+      const clipId = selectedClip.id;
+      setTimeout(() => {
+        setMediaCacheBust((prev) => ({ ...prev, [clipId]: Date.now() }));
+      }, 8000);
+
       setTimeout(() => {
         setIsReRendering(false);
         setSelectedClip(updated);
+        setTrimStart(updated.start);
+        setTrimEnd(updated.end);
         toast("Clip re-rendered successfully");
       }, 300);
     } catch {
@@ -168,36 +191,47 @@ export function ResultsScreen({
 
   const handleDownloadZip = () => {
     setIsDownloadingZip(true);
-    setDownloadZipProgress(15);
-    const interval = setInterval(() => {
-      setDownloadZipProgress((p) => {
-        if (p >= 90) {
-          clearInterval(interval);
-          return 90;
-        }
-        return p + 25;
-      });
-    }, 250);
-
+    const url = defaultApiClient.getDownloadZipUrl(job.id);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${job.id}-clips.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     setTimeout(() => {
-      clearInterval(interval);
-      setDownloadZipProgress(100);
-      setTimeout(() => {
-        setIsDownloadingZip(false);
-        toast(`${clips.length} clips · 142 MB packaged (inert in mock mode)`);
-      }, 400);
-    }, 1500);
+      setIsDownloadingZip(false);
+      toast(`${clips.length} clips downloading as ZIP`);
+    }, 500);
+  };
+
+  const handleDownloadMp4 = (clip: Clip) => {
+    const url = `${defaultApiClient.getVideoUrl(job.id, clip.id)}${cacheBust(clip.id)}`;
+    const a = document.createElement("a");
+    a.href = url;
+    const slug = clip.title.replace(/[^\w-]+/g, "-").replace(/^-+|-+$/g, "") || clip.id;
+    a.download = `${slug}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const copyToClipboard = (text: string, message: string) => {
-    navigator.clipboard.writeText(text);
+    navigator.clipboard.writeText(text).catch(() => null);
     toast(message);
   };
 
   const activeStyle = captionStyles.find((s) => s.id === selectedStyleId) || captionStyles[0];
 
+  // Live region announcement for progress (every 5 s max is handled by the backend SSE rate)
+  const progressPct = Math.round((job.progress ?? 0) * 100);
+
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-6 md:px-8">
+      {/* Hidden live region for screen reader progress */}
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {clips.length > 0 && `${clips.length} clips ready. ${progressPct}% complete.`}
+      </div>
+
       {/* Top Header bar */}
       <div className="flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -235,9 +269,7 @@ export function ResultsScreen({
             className="text-xs font-semibold gap-1.5 h-9"
           >
             <Download className="h-3.5 w-3.5" />
-            {isDownloadingZip
-              ? `Packaging ${downloadZipProgress}%…`
-              : "Download all (.zip)"}
+            {isDownloadingZip ? "Downloading…" : "Download all (.zip)"}
           </Button>
 
           {/* New Video button */}
@@ -257,6 +289,7 @@ export function ResultsScreen({
         {sortedClips.map((clip) => {
           const badge = getScoreBadge(clip.score);
           const durationStr = formatDuration(clip.start, clip.end);
+          const thumbUrl = `${defaultApiClient.getThumbnailUrl(job.id, clip.id)}${cacheBust(clip.id)}`;
 
           return (
             <div
@@ -275,9 +308,13 @@ export function ResultsScreen({
               {/* 9:16 Aspect ratio video thumbnail */}
               <div className="relative aspect-[9/16] w-full overflow-hidden rounded-xl bg-black">
                 <img
-                  src={clip.thumbnail || ""}
+                  src={thumbUrl}
                   alt={clip.title}
                   className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  onError={(e) => {
+                    // Fall back to a simple placeholder on 404
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
                 />
 
                 {/* Badges Overlay */}
@@ -326,7 +363,7 @@ export function ResultsScreen({
 
                 <div className="mt-2 flex items-center justify-between border-t border-border/60 pt-2 text-xs text-muted-foreground">
                   <span className="font-medium text-foreground/80">
-                    {activeStyle.name} · Edit
+                    {activeStyle?.name ?? "Clean Pop"} · Edit
                   </span>
                   <span className="text-[11px]">Click to inspect</span>
                 </div>
@@ -346,18 +383,58 @@ export function ResultsScreen({
       >
         {selectedClip && (
           <div className="mt-4 flex flex-col gap-6 pb-6">
-            {/* Player Preview */}
+            {/* Video Player / Preview */}
             <div className="relative mx-auto aspect-[9/16] w-full max-w-[280px] overflow-hidden rounded-xl border border-border bg-black shadow-lg">
-              <img
-                src={selectedClip.thumbnail || ""}
-                alt={selectedClip.title}
-                className="h-full w-full object-cover"
-              />
-              {/* Live Caption Preview Overlay */}
-              <div className="absolute bottom-6 left-2 right-2 flex justify-center">
-                <CaptionStylePreview style={activeStyle} isHovered={true} />
-              </div>
+              {selectedClip.output_file ? (
+                // Real video — use native <video> with preview proxy or final render
+                <video
+                  ref={videoRef}
+                  key={`${selectedClip.id}-${usePreviewProxy ? "preview" : "video"}-${mediaCacheBust[selectedClip.id] ?? 0}`}
+                  src={
+                    usePreviewProxy
+                      ? `${defaultApiClient.getPreviewUrl(job.id, selectedClip.id)}${cacheBust(selectedClip.id)}`
+                      : `${defaultApiClient.getVideoUrl(job.id, selectedClip.id)}${cacheBust(selectedClip.id)}`
+                  }
+                  className="h-full w-full object-cover"
+                  controls
+                  playsInline
+                  loop
+                  aria-label={`Preview of ${selectedClip.title}`}
+                />
+              ) : (
+                // No rendered file yet — show thumbnail
+                <img
+                  src={`${defaultApiClient.getThumbnailUrl(job.id, selectedClip.id)}${cacheBust(selectedClip.id)}`}
+                  alt={selectedClip.title}
+                  className="h-full w-full object-cover"
+                />
+              )}
+
+              {/* Caption preview overlay — HTML approximation (JASSUB excluded: LGPL) */}
+              {selectedClip.output_file && (
+                <div className="pointer-events-none absolute bottom-6 left-2 right-2 flex justify-center">
+                  <CaptionStylePreview style={activeStyle ?? captionStyles[0]} isHovered />
+                </div>
+              )}
             </div>
+
+            {/* Preview / final video toggle */}
+            {selectedClip.output_file && (
+              <div className="flex items-center justify-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setUsePreviewProxy((v) => !v)}
+                  className="h-7 gap-1.5 text-xs text-muted-foreground"
+                >
+                  {usePreviewProxy ? (
+                    <><Eye className="h-3.5 w-3.5" /> Preview proxy</>
+                  ) : (
+                    <><EyeOff className="h-3.5 w-3.5" /> Final render</>
+                  )}
+                </Button>
+              </div>
+            )}
 
             <p className="text-center text-xs text-muted-foreground italic">
               Preview only — captions are burned in on re-render.
@@ -382,10 +459,12 @@ export function ResultsScreen({
                   <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                   <span
                     className={`font-mono text-xs font-semibold ${
-                      isShortWarning ? "text-warning font-bold" : "text-foreground"
+                      isShortWarning || isLongWarning ? "text-warning font-bold" : "text-foreground"
                     }`}
                   >
-                    {currentClipDuration}s {isShortWarning && "(Under 20s minimum)"}
+                    {currentClipDuration}s{" "}
+                    {isShortWarning && `(Under ${minClip}s minimum)`}
+                    {isLongWarning && `(Over ${maxClip}s maximum)`}
                   </span>
                 </div>
               </div>
@@ -449,14 +528,18 @@ export function ResultsScreen({
 
             {/* Caption Style Switcher */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Caption Style Switcher
+              <label
+                htmlFor="caption-style-select"
+                className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+              >
+                Caption Style
               </label>
               <select
+                id="caption-style-select"
                 value={selectedStyleId}
                 onChange={(e) => setSelectedStyleId(e.target.value)}
                 disabled={isReRendering}
-                className="h-10 rounded-lg border border-input bg-card px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                className="h-10 rounded-lg border border-input bg-card px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-50"
               >
                 {captionStyles.map((style) => (
                   <option key={style.id} value={style.id}>
@@ -469,7 +552,7 @@ export function ResultsScreen({
             {/* Re-render action */}
             <div className="flex flex-col gap-2">
               <Button
-                onClick={handleReRender}
+                onClick={() => { void handleReRender(); }}
                 disabled={isReRendering}
                 className="h-11 w-full font-semibold gap-2"
               >
@@ -478,7 +561,7 @@ export function ResultsScreen({
                   ? `Rendering… ${reRenderProgress}%`
                   : "Re-render clip · ≈ 15 s"}
               </Button>
-              {isReRendering && <Progress value={reRenderProgress} className="h-1.5" />}
+              {isReRendering && <Progress value={reRenderProgress} className="h-1.5" aria-label="Re-render progress" />}
             </div>
 
             {/* Actions: Download MP4 & Copy Buttons */}
@@ -486,7 +569,8 @@ export function ResultsScreen({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => toast("Downloaded MP4 (inert in mock mode)")}
+                onClick={() => handleDownloadMp4(selectedClip)}
+                disabled={!selectedClip.output_file || isReRendering}
                 className="text-xs font-medium gap-1.5"
               >
                 <Download className="h-3.5 w-3.5" />
