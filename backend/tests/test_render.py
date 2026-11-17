@@ -1,6 +1,7 @@
 """Tests for the render stage: filter graphs, encoder choice, clip output."""
 # ruff: noqa: E501 - ASS fixture lines are intentionally long
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -152,6 +153,13 @@ Dialogue: 0,0:00:00.00,0:00:02.00,Default,,0,0,0,,Hello caption
     return path
 
 
+needs_ffmpeg = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
+    reason="ffmpeg/ffprobe not installed",
+)
+
+
+@needs_ffmpeg
 def test_render_clip_produces_1080x1920(tmp_path: Path) -> None:
     video = _make_video(tmp_path / "src.mp4")
     media = _media(str(video))
@@ -191,6 +199,7 @@ def test_render_clip_produces_1080x1920(tmp_path: Path) -> None:
     assert "1080,1920" in probe.stdout and "h264" in probe.stdout
 
 
+@needs_ffmpeg
 def test_render_clip_fit_layout(tmp_path: Path) -> None:
     video = _make_video(tmp_path / "src.mp4", seconds=2.0)
     media = MediaInfo(**{**_media(str(video)).model_dump(), "width": 1280, "height": 720})
@@ -232,6 +241,7 @@ def test_render_clip_fit_layout(tmp_path: Path) -> None:
     assert "1080,1920" in probe.stdout
 
 
+@needs_ffmpeg
 def test_render_thumbnail(tmp_path: Path) -> None:
     video = _make_video(tmp_path / "src.mp4", seconds=2.0)
     media = MediaInfo(**{**_media(str(video)).model_dump(), "width": 1280, "height": 720})
