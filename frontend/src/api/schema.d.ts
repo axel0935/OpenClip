@@ -121,7 +121,7 @@ export interface paths {
         };
         /**
          * Clip Preview
-         * @description Serve the captionless proxy preview.
+         * @description Serve the low-res proxy preview with burned-in captions.
          */
         get: operations["clip_preview_api_jobs__job_id__clips__clip_id__preview_get"];
         put?: never;

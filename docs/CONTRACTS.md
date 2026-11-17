@@ -65,18 +65,28 @@ The API allows CORS only from `http://localhost:5173` and `http://127.0.0.1:5173
 
 ## Server-sent events
 
-`GET /api/jobs/{job_id}/events` uses `text/event-stream`. Each event is UTF-8 JSON in a `data:` line:
+`GET /api/jobs/{job_id}/events` uses `text/event-stream`. Each event is UTF-8 JSON in a `data:` line. Job-scoped payloads carry `job_id`; clip events add `clip_id` and/or `clip`:
 
 ```text
 event: progress
-data: {"job_id":"job-1","stage":"transcribe","progress":0.4,"message":"Transcribing"}
+data: {"job_id":"job-1","status":"running","stage":"transcribe","progress":0.4,"message":"Transcribing"}
 
 event: clip_ready
-data: {"id":"clip-1","start":0.0,"end":30.0,"score":90.0,"title":"Key idea","hook":"Watch this","hashtags":[],"rationale":"Strong hook","source":"heuristic","output_file":null,"thumbnail":null}
+data: {"job_id":"job-1","clip":{"id":"clip-1","start":0.0,"end":30.0,"score":90.0,"title":"Key idea","hook":"Watch this","hashtags":[],"rationale":"Strong hook","source":"heuristic","output_file":".../clip.mp4","thumbnail":".../thumbnail.jpg"}}
 
 event: done
-data: {}
+data: {"job_id":"job-1","status":"completed","stage":"export","progress":1.0,"message":"Render complete"}
 
 event: error
-data: {"code":"render_failed","message":"FFmpeg exited with an error."}
+data: {"job_id":"job-1","code":"render_failed","message":"FFmpeg exited with an error."}
+
+# clip-scoped re-render failure (stream stays open):
+event: error
+data: {"job_id":"job-1","clip_id":"clip-1","code":"render_failed","message":"ffmpeg failed with exit code 1."}
 ```
+
+`clip_ready` is emitted once per clip during the render stage and again after a successful `PATCH` re-render of that clip. A clip-scoped `error` does not terminate the stream; a job-level `error` or `done` does.
+
+## Clip re-render (PATCH)
+
+`PATCH /api/jobs/{job_id}/clips/{clip_id}` validates the merged trim (end > start, within the job's `min_clip_seconds`/`max_clip_seconds` with 10% tolerance, inside the source duration) and the caption style id, then re-renders captions, final MP4, preview proxy and thumbnail into temporary files swapped in atomically. Responses: `200 Clip` (re-render runs in background), `404` unknown job/clip, `409 {"code":"rerender_in_progress"}` when a re-render for the same clip is already running, `422` (`invalid_range`, `invalid_duration`, `out_of_range`, `unknown_style`) on bad input. The `/preview` route serves a ~360x640 proxy with the same burned-in captions as `/video`.
