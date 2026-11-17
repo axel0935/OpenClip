@@ -587,8 +587,10 @@ def _download_whisper(profile: str, settings: Settings) -> Path:
     """Download one Whisper profile into the shared model cache."""
     from openclip.transcribe.config import TranscribeConfig, resolve_profile
 
+    import importlib
+
     try:
-        from faster_whisper.utils import download_model
+        download_model = importlib.import_module("faster_whisper.utils").download_model
     except ImportError as exc:
         raise typer.BadParameter(
             'faster-whisper is not installed; install the asr extra (pip install "openclip[asr]")'
