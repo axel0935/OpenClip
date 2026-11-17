@@ -15,6 +15,7 @@ from openclip.api.app import create_app
 from openclip.core.config import Settings
 from openclip.core.errors import OpenClipError
 from openclip.core.models import JobOptions, JobSource, MediaInfo, Transcript
+from openclip.core.resources import packaged_web_dir
 from openclip.ingest import ingest as run_ingest
 from openclip.ingest.ffprobe import probe_media
 from openclip.transcribe import TranscribeConfig
@@ -44,6 +45,36 @@ def main(
     """Run OpenClip commands."""
 
 
+def _resolve_web_dir() -> Path | None:
+    """Find the built web UI: ``OPENCLIP_WEB_DIR``, package data, then the repo.
+
+    Returns ``None`` when nothing is built; the server then runs API-only and the
+    caller prints a hint instead of failing.
+    """
+    import os
+
+    override = os.environ.get("OPENCLIP_WEB_DIR")
+    if override:
+        candidate = Path(override).expanduser()
+        if (candidate / "index.html").is_file():
+            return candidate
+        typer.echo(
+            f"warning: OPENCLIP_WEB_DIR={override!r} has no index.html; ignoring it.",
+            err=True,
+        )
+    packaged = packaged_web_dir()
+    if packaged is not None:
+        return packaged
+    cwd = Path.cwd()
+    candidates = [cwd / "frontend" / "dist", cwd.parent / "frontend" / "dist"]
+    if cwd.name == "frontend":
+        candidates.insert(0, cwd / "dist")
+    for candidate in candidates:
+        if (candidate / "index.html").is_file():
+            return candidate
+    return None
+
+
 @app.command()
 def serve(
     host: Annotated[str | None, typer.Option("--host", help="Bind address.")] = None,
@@ -51,7 +82,6 @@ def serve(
     open_browser: Annotated[bool, typer.Option("--open", help="Open the UI in a browser.")] = False,
 ) -> None:
     """Run the local API server, optionally serving the built frontend."""
-    import os
     import webbrowser
 
     settings = Settings()
@@ -59,15 +89,19 @@ def serve(
         settings.host = host
     if port:
         settings.port = port
-    web_dir = os.environ.get("OPENCLIP_WEB_DIR") or "frontend/dist"
-    web_path = Path(web_dir)
-    if not web_path.is_absolute():
-        web_path = (
-            Path.cwd().parent / web_path if Path.cwd().name == "backend" else Path.cwd() / web_path
-        )
-    app = create_app(settings, web_dir=web_path if web_path.is_dir() else None)
+    web_path = _resolve_web_dir()
+    app = create_app(settings, web_dir=web_path)
     url = f"http://{settings.host}:{settings.port}"
     typer.echo(f"OpenClip API on {url}")
+    if web_path is None:
+        typer.echo(
+            "No web UI bundle found; serving the API only.\n"
+            "Build it with `make build-web` and set OPENCLIP_WEB_DIR=<path to dist>, "
+            "or install a release wheel that bundles the UI.",
+            err=True,
+        )
+    else:
+        typer.echo(f"web UI: {web_path}")
     if open_browser:
         webbrowser.open(url)
     uvicorn.run(app, host=settings.host, port=settings.port)
@@ -419,6 +453,15 @@ def run(
         typer.echo(f"  {path}")
 
 
+# Step 9: packaging diagnostics and model prefetch.
+# ``doctor`` is read-only and must stay importable with the base install only.
+from openclip.cli.doctor_cmd import doctor as _doctor_impl  # noqa: E402
+from openclip.cli.doctor_cmd import models_app as _models_app  # noqa: E402
+
+app.command(name="doctor")(_doctor_impl)
+app.add_typer(_models_app(), name="models")
+
+
 # Step 6: vertical reframing. Registered here because cli/main.py was clean.
 # The reframe stage needs the optional 'vision' extra (numpy/opencv); without
 # it the command stays registered but reports a clear error.
@@ -434,7 +477,8 @@ else:
     @app.command(name="reframe")
     def _reframe_missing() -> None:
         typer.echo(
-            "error: reframing requires the 'vision' extra (run: uv sync --extra vision)",
+            "error: reframing requires the 'vision' extra "
+            "(install it or run `openclip doctor` for details)",
             err=True,
         )
         raise typer.Exit(code=1)
