@@ -1,6 +1,12 @@
 """Shared test fixtures for OpenClip backend tests."""
 
 import importlib.util
+import os
+
+# Keep the suite hermetic: never let the LLM judge reach a real endpoint
+# (e.g. a local Ollama) from unit tests. Tests that exercise the judge pass
+# an explicit provider or settings instead.
+os.environ.setdefault("OPENCLIP_LLM_BASE_URL", "http://127.0.0.1:9")
 import sys
 from pathlib import Path
 

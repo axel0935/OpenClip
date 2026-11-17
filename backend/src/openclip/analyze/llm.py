@@ -219,12 +219,6 @@ class LLMClipJudgment(BaseModel):
     rationale: str = Field(min_length=1, max_length=200)
 
 
-class LLMJudgeResponse(BaseModel):
-    """Strict JSON envelope expected from the judge."""
-
-    clips: list[LLMClipJudgment]
-
-
 def _strip_fences(text: str) -> str:
     """Remove markdown code fences around a JSON payload."""
     stripped = text.strip()
@@ -238,8 +232,72 @@ def _strip_fences(text: str) -> str:
     return stripped
 
 
+def _clip_field(item: dict, key: str, limit: int, default: str = "") -> str:
+    """Coerce a judgment field to a single-line string within ``limit`` chars."""
+    value = item.get(key)
+    if not isinstance(value, str):
+        return default
+    text = " ".join(value.split())
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rsplit(" ", 1)[0]
+    return (cut.rstrip(",;:") or text[:limit]).strip()
+
+
+def _sanitize_clip(item: object) -> LLMClipJudgment | None:
+    """Repair one raw clip object; return ``None`` when unusable.
+
+    Small local models routinely overshoot field limits (long hooks, odd
+    hashtag shapes). Clamping here keeps one bad field from rejecting the
+    whole batch; entries without a usable id are dropped.
+    """
+    if not isinstance(item, dict):
+        return None
+    cid = item.get("id")
+    if not isinstance(cid, str) or not cid.strip():
+        return None
+    try:
+        score = float(item.get("score"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        score = 50.0
+    score = max(0.0, min(100.0, score))
+    title = _clip_field(item, "title", 60)
+    if not title:
+        return None
+    hook = _clip_field(item, "hook", 160) or title
+    raw_tags = item.get("hashtags")
+    if isinstance(raw_tags, str):
+        raw_tags = [raw_tags]
+    tags: list[str] = []
+    if isinstance(raw_tags, list):
+        for tag in raw_tags:
+            if isinstance(tag, str) and tag.strip():
+                word = tag.strip().lstrip("#")
+                tags.append(f"#{word}" if word else "#openclip")
+    tags = tags[:5]
+    while len(tags) < 3:
+        tags.append("#openclip")
+    rationale = _clip_field(item, "rationale", 200) or "LLM judgment."
+    try:
+        return LLMClipJudgment(
+            id=cid.strip(),
+            score=score,
+            title=title,
+            hook=hook,
+            hashtags=tags,
+            rationale=rationale,
+        )
+    except ValidationError:
+        return None
+
+
 def _parse_judgments(raw: str) -> dict[str, LLMClipJudgment]:
-    """Parse and validate judge output; raise on malformed JSON."""
+    """Parse and validate judge output; raise on malformed JSON.
+
+    Individual clip entries are sanitized before validation so one oversized
+    field does not reject the whole batch. Raises when the envelope is not
+    JSON or contains no usable clip at all.
+    """
     payload = _strip_fences(raw)
     try:
         data = json.loads(payload)
@@ -249,8 +307,15 @@ def _parse_judgments(raw: str) -> dict[str, LLMClipJudgment]:
         if not match:
             raise ValueError("no JSON object in judge response") from exc
         data = json.loads(match.group(0))
-    response = LLMJudgeResponse.model_validate(data)
-    return {clip.id: clip for clip in response.clips}
+    clips = data.get("clips") if isinstance(data, dict) else None
+    if not isinstance(clips, list):
+        raise ValueError("judge response has no 'clips' list")
+    judgments = {
+        clip.id: clip for clip in (_sanitize_clip(item) for item in clips) if clip is not None
+    }
+    if not judgments:
+        raise ValueError("judge response contained no usable clip judgments")
+    return judgments
 
 
 def _batches(candidates: list[Candidate], size: int) -> list[list[Candidate]]:
