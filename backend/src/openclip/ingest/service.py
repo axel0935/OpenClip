@@ -111,7 +111,8 @@ def extract_audio(
         )
     except FileNotFoundError as exc:
         raise IngestFailure(
-            "ffmpeg_missing", f"ffmpeg '{settings.ffmpeg_path}' could not be executed."
+            "ffmpeg_missing",
+            f"ffmpeg '{settings.ffmpeg_path}' could not be executed; run `openclip doctor`.",
         ) from exc
     assert proc.stdout is not None
     for line in proc.stdout:

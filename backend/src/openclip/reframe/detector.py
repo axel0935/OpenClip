@@ -106,7 +106,8 @@ class YuNetDetector:
         except ImportError as exc:
             raise ReframeError(
                 "vision_unavailable",
-                "opencv-python-headless is not installed; install the 'vision' extra.",
+                "opencv-python-headless is not installed; install the vision extra "
+                '(`pip install "openclip[vision]"`) and run `openclip doctor`.',
             ) from exc
         self._cv2 = cv2
         self._detector: Any = cv2.FaceDetectorYN.create(

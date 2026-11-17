@@ -54,9 +54,15 @@ _ANALYZE_WEIGHTS = {
 }
 
 _EXTRA_HINTS = {
-    "asr_unavailable": "Install the ASR extra: uv sync --extra asr",
-    "vision_unavailable": "Install the vision extra: uv sync --extra vision",
-    "model_download_failed": "Check your connection or place the model manually.",
+    "asr_unavailable": (
+        'Install the asr extra, e.g. pip install "openclip[asr]"; run `openclip doctor`.'
+    ),
+    "vision_unavailable": (
+        'Install the vision extra, e.g. pip install "openclip[vision]"; run `openclip doctor`.'
+    ),
+    "model_download_failed": (
+        "Check your connection or place the model manually; run `openclip doctor`."
+    ),
 }
 
 
@@ -561,7 +567,8 @@ def _render_clip_artifacts(
         from openclip.render import render_clip, render_preview, render_thumbnail  # noqa: PLC0415
     except ImportError as exc:
         raise ConfigError(
-            "Reframing/rendering requires extra dependencies: uv sync --extra vision"
+            'Reframing/rendering requires the vision extra: pip install "openclip[vision]" '
+            "(see `openclip doctor`)"
         ) from exc
 
     ass_path = clip_dir / "captions.ass"
@@ -607,7 +614,8 @@ def _render_one_clip(
         from openclip.render import render_clip, render_preview, render_thumbnail  # noqa: PLC0415
     except ImportError as exc:
         raise ConfigError(
-            "Reframing/rendering requires extra dependencies: uv sync --extra vision"
+            'Reframing/rendering requires the vision extra: pip install "openclip[vision]" '
+            "(see `openclip doctor`)"
         ) from exc
 
     clip_dir = workdir / "clips" / clip.id

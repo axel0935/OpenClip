@@ -17,7 +17,9 @@ def _run_probe(path: Path, settings: Settings) -> dict[str, Any]:
     """Run ffprobe and return its JSON document."""
     if not shutil.which(settings.ffprobe_path):
         raise IngestFailure(
-            "ffmpeg_missing", f"ffprobe '{settings.ffprobe_path}' was not found on PATH."
+            "ffmpeg_missing",
+            f"ffprobe '{settings.ffprobe_path}' was not found on PATH; "
+            "install FFmpeg, then run `openclip doctor`.",
         )
     cmd = [
         settings.ffprobe_path,
@@ -35,7 +37,8 @@ def _run_probe(path: Path, settings: Settings) -> dict[str, Any]:
         )
     except FileNotFoundError as exc:
         raise IngestFailure(
-            "ffmpeg_missing", f"ffprobe '{settings.ffprobe_path}' could not be executed."
+            "ffmpeg_missing",
+            f"ffprobe '{settings.ffprobe_path}' could not be executed; run `openclip doctor`.",
         ) from exc
     except subprocess.TimeoutExpired as exc:
         raise IngestFailure("unsupported_file", f"ffprobe timed out reading '{path}'.") from exc
@@ -115,9 +118,13 @@ def ensure_ffmpeg(settings: Settings) -> None:
     """Fail early with a clear error when FFmpeg tooling is missing."""
     if not shutil.which(settings.ffmpeg_path):
         raise IngestFailure(
-            "ffmpeg_missing", f"ffmpeg '{settings.ffmpeg_path}' was not found on PATH."
+            "ffmpeg_missing",
+            f"ffmpeg '{settings.ffmpeg_path}' was not found on PATH; "
+            "install FFmpeg, then run `openclip doctor`.",
         )
     if not shutil.which(settings.ffprobe_path):
         raise IngestFailure(
-            "ffmpeg_missing", f"ffprobe '{settings.ffprobe_path}' was not found on PATH."
+            "ffmpeg_missing",
+            f"ffprobe '{settings.ffprobe_path}' was not found on PATH; "
+            "install FFmpeg, then run `openclip doctor`.",
         )

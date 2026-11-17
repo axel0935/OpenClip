@@ -65,7 +65,8 @@ def _load_model(
     except ImportError as exc:
         raise TranscriptionFailure(
             "asr_unavailable",
-            "faster-whisper is not installed. Install the ASR extra, e.g. `uv sync --extra asr`.",
+            "faster-whisper is not installed. Install the asr extra, e.g. "
+            '`pip install "openclip[asr]"`, then run `openclip doctor`.',
         ) from exc
     model_dir.mkdir(parents=True, exist_ok=True)
     if not _model_is_cached(model_dir, model_name):
