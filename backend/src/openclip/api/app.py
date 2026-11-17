@@ -1,5 +1,6 @@
 """FastAPI application factory implementing the OpenClip HTTP contract."""
 
+import email.utils
 import json
 import logging
 import queue
@@ -95,9 +96,37 @@ def _safe_file(path: Path, root: Path) -> Path | None:
     return resolved if resolved.is_file() else None
 
 
+def _is_terminal_frame(frame: str) -> bool:
+    """True when an SSE frame ends the job stream.
+
+    ``done`` always terminates; ``error`` terminates only for job-level
+    failures — clip-scoped re-render errors carry a ``clip_id`` and must not
+    close the stream.
+    """
+    if frame.startswith("event: done"):
+        return True
+    if not frame.startswith("event: error"):
+        return False
+    try:
+        data = json.loads(frame.split("data:", 1)[1])
+    except (ValueError, IndexError):
+        return True
+    return "clip_id" not in data
+
+
 def _file_response(path: Path, media_type: str, request: Request) -> Response:
-    """Serve a file with HTTP Range support for video (streamed, not in memory)."""
-    size = path.stat().st_size
+    """Serve a file with Range support and revalidation-friendly cache headers."""
+    stat = path.stat()
+    size = stat.st_size
+    etag = f'W/"{stat.st_mtime_ns:x}-{size:x}"'
+    cache_headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "no-cache",
+        "ETag": etag,
+        "Last-Modified": email.utils.formatdate(stat.st_mtime, usegmt=True),
+    }
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=cache_headers)
     range_header = request.headers.get("range")
     if range_header and media_type.startswith("video/"):
         match = re.match(r"bytes=(\d*)-(\d*)", range_header.strip())
@@ -126,17 +155,21 @@ def _file_response(path: Path, media_type: str, request: Request) -> Response:
                     media_type=media_type,
                     headers={
                         "Content-Range": f"bytes {start}-{end}/{size}",
-                        "Accept-Ranges": "bytes",
+                        **cache_headers,
                         "Content-Length": str(length),
                     },
                 )
-    return FileResponse(path, media_type=media_type, headers={"Accept-Ranges": "bytes"})
+    return FileResponse(path, media_type=media_type, headers=cache_headers)
 
 
-def create_app(settings: Settings | None = None, web_dir: Path | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    web_dir: Path | None = None,
+    pipeline: Pipeline | None = None,
+) -> FastAPI:
     """Build the local-only OpenClip HTTP application."""
     cfg = settings or Settings()
-    pipeline = Pipeline(cfg)
+    pipeline = pipeline or Pipeline(cfg)
     app = FastAPI(title="OpenClip API", version=__version__)
     app.state.pipeline = pipeline
     app.state.settings = cfg
@@ -289,7 +322,7 @@ def create_app(settings: Settings | None = None, web_dir: Path | None = None) ->
             job = pipeline.job(job_id)
             if job is not None:
                 snapshot = {
-                    "id": job.id,
+                    "job_id": job.id,
                     "status": str(job.status),
                     "stage": str(job.stage) if job.stage else None,
                     "progress": job.progress,
@@ -304,7 +337,7 @@ def create_app(settings: Settings | None = None, web_dir: Path | None = None) ->
                         yield ": keepalive\n\n"
                         continue
                     yield frame
-                    if "event: done" in frame or "event: error" in frame:
+                    if _is_terminal_frame(frame):
                         return
             finally:
                 pipeline.bus.unsubscribe(job_id, q)
@@ -325,6 +358,50 @@ def create_app(settings: Settings | None = None, web_dir: Path | None = None) ->
         clip = next((c for c in job.clips if c.id == clip_id), None)
         if clip is None:
             return _not_found("Clip")
+
+        # Validate the merged range before touching anything.
+        new_start = body.start if body.start is not None else clip.start
+        new_end = body.end if body.end is not None else clip.end
+        if new_end <= new_start:
+            return _error(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "invalid_range",
+                "Clip end must be after its start.",
+            )
+        length = new_end - new_start
+        opts = job.options
+        if length < opts.min_clip_seconds * 0.9 or length > opts.max_clip_seconds * 1.1:
+            return _error(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "invalid_duration",
+                f"Clip length must be within {opts.min_clip_seconds:g}-"
+                f"{opts.max_clip_seconds:g} seconds (got {length:.1f}).",
+            )
+        if job.media is not None and (new_start < 0 or new_end > job.media.duration + 0.5):
+            return _error(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "out_of_range",
+                "Clip bounds must lie inside the source video.",
+            )
+        if body.caption_style_id is not None:
+            from openclip.captions.presets import load_presets
+
+            if body.caption_style_id not in load_presets():
+                return _error(
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    "unknown_style",
+                    f"Unknown caption style '{body.caption_style_id}'.",
+                )
+
+        lock = pipeline.clip_rerender_lock(job_id, clip_id)
+        if not lock.acquire(blocking=False):
+            return _error(
+                status.HTTP_409_CONFLICT,
+                "rerender_in_progress",
+                "A re-render for this clip is already running.",
+            )
+
+        prev_start, prev_end = clip.start, clip.end
         if body.start is not None:
             clip.start = body.start
         if body.end is not None:
@@ -335,9 +412,19 @@ def create_app(settings: Settings | None = None, web_dir: Path | None = None) ->
 
         def bg() -> None:
             try:
-                pipeline.rerender_clip(job_id, clip_id, body.start, body.end, body.caption_style_id)
+                pipeline.rerender_clip(
+                    job_id,
+                    clip_id,
+                    body.start,
+                    body.end,
+                    body.caption_style_id,
+                    prev_start=prev_start,
+                    prev_end=prev_end,
+                )
             except Exception:
                 log.exception("clip re-render failed for %s/%s", job_id, clip_id)
+            finally:
+                lock.release()
 
         threading.Thread(target=bg, daemon=True).start()
         return clip
@@ -382,7 +469,7 @@ def create_app(settings: Settings | None = None, web_dir: Path | None = None) ->
         tags=["clips"],
     )
     def clip_preview(job_id: str, clip_id: str, request: Request) -> Response:
-        """Serve the captionless proxy preview."""
+        """Serve the low-res proxy preview with burned-in captions."""
         return _clip_artifact(job_id, clip_id, "preview", "video/mp4", request)
 
     @app.get(
