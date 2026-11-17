@@ -46,7 +46,15 @@ flowchart LR
 | `silence_penalty` | 10 | Longest internal word gap beyond ~1.5 s. |
 | `filler_penalty` | 10 | Density of filler words ("um", "like", "basically"…). |
 
-The optional LLM judge rescores only the top 12 heuristic candidates; final score is `0.6·llm + 0.4·heuristic` when it answers, heuristic-only otherwise.
+The optional LLM judge rescores only the top 12 heuristic candidates, sent in batches of `llm_batch_size` (default 5) so small local models stay inside their context window; final score is `0.6·llm + 0.4·heuristic` when it answers, heuristic-only otherwise.
+
+### LLM judge (Step 10)
+
+`analyze/llm.py` speaks OpenAI-compatible chat completions (`/v1/chat/completions`, `response_format` JSON mode with automatic fallback, `stream: false`, `temperature` 0.2, one retry, per-request timeout `OPENCLIP_LLM_TIMEOUT_SECONDS`, default 180 s). Candidates are judged in batches with progress callbacks and cancellation checks between batches; a batch that fails twice is skipped so its candidates keep heuristic metadata, and `None` (full heuristic fallback) is returned only when every batch fails. After judging, the provider issues Ollama `keep_alive: 0` (`POST /api/generate`) so the model RAM is released before rendering — verified with `ollama ps`.
+
+Model selection: `llm_model`/`OPENCLIP_LLM_MODEL` wins; otherwise `build_provider` probes the Ollama default (`http://127.0.0.1:11434/v1`, or `OPENCLIP_LLM_BASE_URL`) and picks the best installed entry of `RECOMMENDED_LLM_MODELS` (`gemma2:2b` first — see the benchmark table in `docs/PROGRESS.md`). `openclip models llm-list` shows installed vs recommended; `openclip doctor` names the auto-selected model.
+
+Prompt and output hygiene (`analyze/prompts.py`, `analyze/service.py`): the system prompt carries the rubric, strict output rules and two synthetic good/bad examples. Responses are sanitized per clip (fields clamped, unusable entries dropped) and then repaired against the rules: titles ≤ 60 chars must share content words with the clip text, hooks must be verbatim lines (else replaced by the best heuristic sentence), hashtags are 3–5 lowercase topic tags. A small English profanity list masks words as `f***` in titles/hooks and drops them from hashtags — applied to LLM *and* heuristic metadata, while clip text and captions stay untouched.
 
 ## Reframing
 

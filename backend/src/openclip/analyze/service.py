@@ -129,8 +129,10 @@ def _hashtags(text: str, count: int = 4) -> list[str]:
     """Derive 3-5 clean topic hashtags from the most frequent content words."""
     freq: dict[str, int] = {}
     for word in _WORD_RE.findall(text.lower()):
+        word = word.replace("'", "")
         if (
             len(word) > 3
+            and word.isalpha()
             and word not in STOPWORDS
             and word not in _PROFANITY
             and word not in _HASHTAG_FILLER
