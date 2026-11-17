@@ -4,6 +4,8 @@ import json
 import logging
 import os
 import re
+import threading
+from collections.abc import Callable
 from typing import Protocol
 
 import httpx
@@ -16,8 +18,26 @@ from openclip.core.models import Candidate
 log = logging.getLogger(__name__)
 
 _PROBE_TIMEOUT = 2.0
-_REQUEST_TIMEOUT = 60.0
-_MAX_RETRIES = 2
+_DEFAULT_TIMEOUT = 180.0
+_MAX_ATTEMPTS = 2  # one retry
+_UNLOAD_TIMEOUT = 5.0
+_OLLAMA_DEFAULT_URL = "http://127.0.0.1:11434/v1"
+_DEFAULT_BATCH_SIZE = 5
+
+#: Local models recommended for the judge, best quality-per-resource first.
+#: ``OPENCLIP_LLM_MODEL`` or an explicit ``llm_model`` setting overrides this.
+RECOMMENDED_LLM_MODELS: tuple[str, ...] = (
+    "gemma2:2b",
+    "qwen2.5:3b",
+    "llama3.2:3b",
+    "phi3.5",
+)
+
+ProgressCallback = Callable[[float, str], None]
+
+
+def _no_op(_fraction: float, _message: str) -> None:
+    """Default progress sink."""
 
 
 class LLMProvider(Protocol):
@@ -41,7 +61,7 @@ class OpenAICompatibleProvider:
         model: str,
         *,
         api_key: str | None = None,
-        timeout: float = _REQUEST_TIMEOUT,
+        timeout: float = _DEFAULT_TIMEOUT,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         headers = {"Content-Type": "application/json"}
@@ -54,6 +74,12 @@ class OpenAICompatibleProvider:
             transport=transport,
         )
         self._model = model
+        self._json_mode = True
+
+    @property
+    def model(self) -> str:
+        """Return the configured model id."""
+        return self._model
 
     def is_available(self) -> bool:
         """Probe ``GET /models`` with a short timeout."""
@@ -63,20 +89,47 @@ class OpenAICompatibleProvider:
         except httpx.HTTPError:
             return False
 
-    def chat(self, system: str, user: str) -> str:
-        """POST one chat completion with a single retry on transport errors."""
-        payload = {
+    def list_models(self) -> list[str]:
+        """Return installed model ids, or an empty list on failure."""
+        try:
+            resp = self._client.get("/models", timeout=_PROBE_TIMEOUT)
+            if resp.status_code != 200:
+                return []
+            data = resp.json().get("data")
+        except (httpx.HTTPError, ValueError, AttributeError):
+            return []
+        if not isinstance(data, list):
+            return []
+        return [str(item["id"]) for item in data if isinstance(item, dict) and item.get("id")]
+
+    def _payload(self, system: str, user: str) -> dict:
+        payload: dict = {
             "model": self._model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
             "temperature": 0.2,
+            "stream": False,
         }
+        if self._json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        return payload
+
+    def chat(self, system: str, user: str) -> str:
+        """POST one chat completion; one retry on transport or HTTP errors.
+
+        Endpoints that reject ``response_format`` get one fallback attempt
+        without JSON mode before the error is raised.
+        """
         last_error: Exception | None = None
-        for _ in range(_MAX_RETRIES):
+        for _ in range(_MAX_ATTEMPTS):
             try:
-                resp = self._client.post("/chat/completions", json=payload)
+                resp = self._client.post("/chat/completions", json=self._payload(system, user))
+                if resp.status_code == 400 and self._json_mode:
+                    self._json_mode = False
+                    log.info("endpoint rejected JSON mode; retrying without it")
+                    continue
                 resp.raise_for_status()
                 data = resp.json()
                 return str(data["choices"][0]["message"]["content"])
@@ -84,22 +137,75 @@ class OpenAICompatibleProvider:
                 last_error = exc
         raise AnalysisError(f"LLM request failed: {last_error}")
 
+    def unload(self) -> None:
+        """Best-effort model unload (Ollama ``keep_alive: 0``).
+
+        Derives the native API root by stripping a trailing ``/v1``; on
+        non-Ollama endpoints the call 404s and is ignored.
+        """
+        root = self._client.base_url
+        base = str(root).rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3]
+        try:
+            self._client.post(
+                f"{base}/api/generate",
+                json={"model": self._model, "keep_alive": 0},
+                timeout=_UNLOAD_TIMEOUT,
+            )
+        except httpx.HTTPError:
+            pass
+
     def close(self) -> None:
         """Release the underlying HTTP client."""
         self._client.close()
 
 
+def _pick_recommended(installed: list[str]) -> str | None:
+    """Return the best recommended model present in ``installed``."""
+    for rec in RECOMMENDED_LLM_MODELS:
+        short = rec.split(":")[0]
+        if rec in installed:
+            return rec
+        # Accept size-tagged variants, e.g. installed "qwen2.5:3b-instruct".
+        for name in installed:
+            if name.split(":")[0] == short:
+                return name
+    return None
+
+
 def build_provider(settings) -> OpenAICompatibleProvider | None:
-    """Create a provider from settings, or ``None`` when not configured."""
-    base_url = getattr(settings, "llm_base_url", None)
+    """Create a provider from settings, or ``None`` when unavailable.
+
+    With no explicit ``llm_base_url``/``llm_model`` the Ollama default
+    endpoint is probed; the best installed recommended model is picked.
+    """
+    base_url = getattr(settings, "llm_base_url", None) or _OLLAMA_DEFAULT_URL
     model = getattr(settings, "llm_model", None)
-    if not base_url or not model:
-        return None
-    return OpenAICompatibleProvider(
+    provider = OpenAICompatibleProvider(
         base_url,
-        model,
+        model or "",
         api_key=os.environ.get("OPENCLIP_LLM_API_KEY"),
+        timeout=float(getattr(settings, "llm_timeout_seconds", _DEFAULT_TIMEOUT)),
     )
+    if not provider.is_available():
+        if getattr(settings, "llm_base_url", None):
+            log.info("configured LLM endpoint %s is unreachable", base_url)
+        return None
+    if not model:
+        installed = provider.list_models()
+        model = _pick_recommended(installed)
+        if model is None:
+            log.info(
+                "no recommended LLM model installed at %s (have: %s); using heuristic scoring",
+                base_url,
+                ", ".join(installed) or "none",
+            )
+            provider.close()
+            return None
+        provider._model = model
+        log.info("auto-selected LLM model %r from %s", model, base_url)
+    return provider
 
 
 class LLMClipJudgment(BaseModel):
@@ -147,22 +253,62 @@ def _parse_judgments(raw: str) -> dict[str, LLMClipJudgment]:
     return {clip.id: clip for clip in response.clips}
 
 
+def _batches(candidates: list[Candidate], size: int) -> list[list[Candidate]]:
+    """Split candidates into fixed-size batches for bounded prompts."""
+    size = max(1, size)
+    return [candidates[i : i + size] for i in range(0, len(candidates), size)]
+
+
 def judge_candidates(
     provider: LLMProvider,
     candidates: list[Candidate],
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: threading.Event | None = None,
+    batch_size: int = _DEFAULT_BATCH_SIZE,
 ) -> dict[str, LLMClipJudgment] | None:
-    """Ask the judge to score candidates; ``None`` on unrecoverable failure."""
+    """Ask the judge to score candidates; ``None`` on unrecoverable failure.
+
+    Candidates are judged in batches so small local models stay inside their
+    context window. A batch that fails twice is skipped (its candidates fall
+    back to heuristic metadata); ``None`` is returned only when every batch
+    fails. Cancellation between batches raises :class:`AnalysisError`.
+    """
     if not candidates:
         return {}
-    user = build_user_prompt(candidates)
-    last_error: Exception | None = None
-    for _ in range(2):
-        try:
-            raw = provider.chat(SYSTEM_PROMPT, user)
-            judgments = _parse_judgments(raw)
-            return judgments
-        except (AnalysisError, ValueError, ValidationError) as exc:
-            last_error = exc
-            log.info("LLM judge attempt failed, retrying once: %s", exc)
-    log.warning("LLM judge failed twice; falling back to heuristic scores: %s", last_error)
-    return None
+    batches = _batches(candidates, batch_size)
+    judgments: dict[str, LLMClipJudgment] = {}
+    failures = 0
+    report = progress or _no_op
+    for index, batch in enumerate(batches):
+        if cancel is not None and cancel.is_set():
+            raise AnalysisError("Analysis cancelled.")
+        user = build_user_prompt(batch)
+        batch_judgments: dict[str, LLMClipJudgment] | None = None
+        last_error: Exception | None = None
+        for _ in range(_MAX_ATTEMPTS):
+            try:
+                raw = provider.chat(SYSTEM_PROMPT, user)
+                batch_judgments = _parse_judgments(raw)
+                break
+            except (AnalysisError, ValueError, ValidationError) as exc:
+                last_error = exc
+                log.info("LLM judge batch %d attempt failed: %s", index + 1, exc)
+        if batch_judgments is None:
+            failures += 1
+            log.warning(
+                "LLM judge batch %d/%d failed; heuristic fallback: %s",
+                index + 1,
+                len(batches),
+                last_error,
+            )
+        else:
+            judgments.update(batch_judgments)
+        report(
+            (index + 1) / len(batches),
+            f"Judging candidates ({index + 1}/{len(batches)})",
+        )
+    if failures == len(batches):
+        log.warning("LLM judge failed on every batch; falling back to heuristic scores")
+        return None
+    return judgments

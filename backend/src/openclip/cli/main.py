@@ -249,6 +249,10 @@ def analyze(
         Literal["auto", "heuristic", "llm"],
         typer.Option("--mode", help="Analysis mode."),
     ] = "auto",
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="LLM model id (overrides OPENCLIP_LLM_MODEL)."),
+    ] = None,
     max_clips: Annotated[
         int | None,
         typer.Option("--max-clips", help="Maximum number of clips.", min=1),
@@ -256,6 +260,8 @@ def analyze(
 ) -> None:
     """Detect highlight clips from a transcript and print a ranked table."""
     settings = Settings()
+    if model:
+        settings.llm_model = model
     out_dir = workdir or transcript_path.parent
     try:
         transcript = _load_transcript(transcript_path)
@@ -363,6 +369,10 @@ def run(
         Literal["auto", "fast", "balanced", "quality"], typer.Option("--profile")
     ] = "auto",
     mode: Annotated[Literal["auto", "heuristic", "llm"], typer.Option("--mode")] = "auto",
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="LLM model id (overrides OPENCLIP_LLM_MODEL)."),
+    ] = None,
     resume: Annotated[bool, typer.Option("--resume", help="Resume an interrupted job.")] = False,
 ) -> None:
     """Run the full clipping pipeline without the server."""
@@ -374,6 +384,8 @@ def run(
     from openclip.pipeline.orchestrator import Pipeline
 
     settings = Settings()
+    if model:
+        settings.llm_model = model
     options = JobOptions(
         min_clip_seconds=min_seconds if min_seconds is not None else 20,
         max_clip_seconds=max_seconds if max_seconds is not None else 90,

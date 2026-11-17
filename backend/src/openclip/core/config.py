@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     analysis_mode: Literal["auto", "heuristic", "llm"] = "auto"
     llm_base_url: str | None = None
     llm_model: str | None = None
+    llm_timeout_seconds: float = 180.0
+    llm_batch_size: int = 5
     ffmpeg_path: str = "ffmpeg"
     ffprobe_path: str = "ffprobe"
     max_video_minutes: int = 240

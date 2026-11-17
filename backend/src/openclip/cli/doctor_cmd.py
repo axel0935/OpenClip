@@ -27,6 +27,7 @@ from typing import Annotated, Literal
 import typer
 
 from openclip import __version__
+from openclip.analyze.llm import RECOMMENDED_LLM_MODELS
 from openclip.core.config import Settings
 from openclip.core.resources import install_mode, packaged_web_dir, repo_dir
 
@@ -504,14 +505,26 @@ def _check_llm(settings: Settings) -> Check:
         )
     shown = ", ".join(models[:5]) if models else "no model installed"
     origin = "" if configured else " (Ollama default)"
+    recommended = RECOMMENDED_LLM_MODELS[0]
+    installed_recommended = [
+        m for m in models if m.split(":")[0] in {r.split(":")[0] for r in RECOMMENDED_LLM_MODELS}
+    ]
+    auto = f"; auto mode would use {installed_recommended[0]}" if installed_recommended else ""
     if not models:
         return Check(
             "llm",
             "info",
             f"{base_url}{origin}: reachable, but {shown}; analysis uses heuristic mode",
-            "optional: pull a model, e.g. ollama pull llama3.2",
+            f"optional: ollama pull {recommended}",
         )
-    return Check("llm", "ok", f"{base_url}{origin}: {shown}")
+    if not installed_recommended:
+        return Check(
+            "llm",
+            "info",
+            f"{base_url}{origin}: {shown}; none of the recommended models installed",
+            f"optional: ollama pull {recommended}",
+        )
+    return Check("llm", "ok", f"{base_url}{origin}: {shown}{auto}")
 
 
 def run_checks(settings: Settings | None = None) -> DoctorReport:
@@ -585,9 +598,9 @@ def doctor(
 
 def _download_whisper(profile: str, settings: Settings) -> Path:
     """Download one Whisper profile into the shared model cache."""
-    from openclip.transcribe.config import TranscribeConfig, resolve_profile
-
     import importlib
+
+    from openclip.transcribe.config import TranscribeConfig, resolve_profile
 
     try:
         download_model = importlib.import_module("faster_whisper.utils").download_model
@@ -638,6 +651,28 @@ def models_app() -> typer.Typer:
             typer.echo(f"whisper: {_download_whisper(profile, settings)}")
         if yunet:
             typer.echo(f"yunet: {_download_yunet(settings)}")
+
+    @app.command("llm-list")
+    def llm_list() -> None:
+        """List installed Ollama models and the recommended default (read-only)."""
+        settings = Settings()
+        base_url = (settings.llm_base_url or _OLLAMA_BASE_URL).rstrip("/")
+        models = _llm_models(base_url)
+        if models is None:
+            typer.echo(f"no OpenAI-compatible endpoint answered at {base_url}")
+            raise typer.Exit(code=1)
+        if not models:
+            typer.echo(f"{base_url}: reachable, but no models installed")
+        recommended = RECOMMENDED_LLM_MODELS[0]
+        typer.echo(f"recommended default: {recommended}")
+        for model in models:
+            marker = (
+                " (recommended)"
+                if model.split(":")[0] in {r.split(":")[0] for r in RECOMMENDED_LLM_MODELS}
+                else ""
+            )
+            typer.echo(f"  {model}{marker}")
+        typer.echo("pull one with: ollama pull <model>")
 
     return app
 
