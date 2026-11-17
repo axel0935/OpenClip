@@ -1,7 +1,9 @@
 """Font discovery and the FFmpeg ``subtitles`` filter string.
 
-Fonts live flat in ``assets/fonts`` during development: one ``<Family>-<Weight>.ttf``
-file per weight, plus one ``<Family>-OFL.txt`` licence file per family.
+Fonts live flat in ``assets/fonts`` during development and in
+``openclip/data/fonts`` inside an installed wheel: one ``<Family>-<Weight>.ttf``
+file per weight. Licence texts are kept next to that directory, never inside
+it — see ``assets/licenses``.
 
 The flat layout is required, not merely convenient: libass does **not** recurse
 into sub-directories of ``fontsdir``. It logs a directory name as if it were a
@@ -9,49 +11,39 @@ font file, fails to load it, and silently falls back to a system font — which
 makes every glyph measurement wrong. Keeping one level keeps libass and Pillow
 in agreement.
 
-A deployment can point ``OPENCLIP_FONTS_DIR`` at another flat directory.
+Resolution order: ``OPENCLIP_FONTS_DIR``, then the installed package data, then
+the repository copy. A deployment can point ``OPENCLIP_FONTS_DIR`` at another
+flat directory.
 """
 
 import logging
-import os
 from pathlib import Path
 
 from openclip.core.errors import ConfigError
+from openclip.core.resources import env_dir, packaged_resource_dir, repo_dir
 
 LOGGER = logging.getLogger(__name__)
 
 FONTS_DIR_ENV = "OPENCLIP_FONTS_DIR"
-_REPO_MARKERS = ("assets/fonts", "presets/captions")
+_FONTS_RELATIVE = "fonts"
 _WEIGHT_ORDER = ("Bold", "SemiBold", "Black", "ExtraBold", "Medium", "Regular")
-
-
-def _repo_fonts_dir() -> Path | None:
-    """Find ``assets/fonts`` by walking up from this module."""
-    current = Path(__file__).resolve().parent
-    for candidate in [current, *current.parents]:
-        if all((candidate / marker).exists() for marker in _REPO_MARKERS):
-            return candidate / "assets" / "fonts"
-    return None
 
 
 def fonts_dir() -> Path:
     """Return the directory that holds the bundled caption fonts.
 
-    ``OPENCLIP_FONTS_DIR`` wins over the repository copy. :class:`ConfigError`
-    is raised when the resolved path is missing or not a directory.
+    ``OPENCLIP_FONTS_DIR`` wins over the packaged copy, which wins over the
+    repository copy. :class:`ConfigError` is raised when nothing resolves.
     """
-    override = os.environ.get(FONTS_DIR_ENV)
-    if override:
-        path = Path(override).expanduser()
-        if not path.is_dir():
-            raise ConfigError(f"{FONTS_DIR_ENV}={override!r} is not a directory.")
-        return path
-    repo_dir = _repo_fonts_dir()
-    if repo_dir is None or not repo_dir.is_dir():
-        raise ConfigError(
-            "Font directory not found. Set OPENCLIP_FONTS_DIR to a flat directory of TTF files."
-        )
-    return repo_dir
+    override = env_dir(FONTS_DIR_ENV)
+    if override is not None:
+        return override
+    for candidate in (packaged_resource_dir(_FONTS_RELATIVE), repo_dir("assets/fonts")):
+        if candidate is not None:
+            return candidate
+    raise ConfigError(
+        "Font directory not found. Set OPENCLIP_FONTS_DIR to a flat directory of TTF files."
+    )
 
 
 def fonts_dir_or_none() -> Path | None:

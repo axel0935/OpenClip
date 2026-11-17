@@ -9,6 +9,12 @@ __pycache__/
 .venv/
 venv/
 
+# Build outputs staged by the packaging hooks
+backend/src/openclip/data/
+backend/src/openclip/web/
+backend/dist/
+build/
+
 # Node and frontend builds
 node_modules/
 frontend/node_modules/

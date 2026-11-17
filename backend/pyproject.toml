@@ -28,6 +28,11 @@ dependencies = [
 openclip = "openclip.cli.main:app"
 
 [project.optional-dependencies]
+# ``asr`` adds local speech recognition, ``vision`` adds face tracking and
+# numpy-backed rendering. ``llm`` is deliberately empty: the LLM judge speaks
+# plain HTTP through httpx, which is a base dependency, so no provider SDK is
+# needed. It stays declared so ``openclip[llm]`` keeps working for users who
+# scripted it, and ``all`` is the one-line install.
 asr = [
     "av>=11,<19",
     "faster-whisper>=1.2.1",
@@ -37,6 +42,12 @@ vision = [
     "opencv-python-headless>=5.0.0.93",
 ]
 llm = []
+all = [
+    "av>=11,<19",
+    "faster-whisper>=1.2.1",
+    "numpy>=2.5.5",
+    "opencv-python-headless>=5.0.0.93",
+]
 
 [dependency-groups]
 dev = [
@@ -48,6 +59,11 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/openclip"]
+# ``src/openclip/data`` (presets, fonts, licences) is staged by hatch_build.py.
+artifacts = ["src/openclip/data"]
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

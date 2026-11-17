@@ -116,11 +116,14 @@ class TestFonts:
             assert style.font_family.lower() in bundled, style.font_family
 
     def test_every_family_has_a_licence(self) -> None:
-        root = fonts_dir()
+        # Licence texts live in a sibling directory: libass scans every name in
+        # ``fontsdir``, so the flat font directory must contain TTFs only.
+        licences_dir = fonts_dir().parent / "licenses"
         families = available_families()
         assert families
-        licences = list(root.glob("*OFL.txt")) + list(root.glob("*LICENSE*"))
+        licences = list(licences_dir.glob("*OFL.txt")) + list(licences_dir.glob("*LICENSE*"))
         assert len(licences) >= len(families)
+        assert not list(fonts_dir().glob("*.txt"))
 
     def test_env_override_must_exist(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENCLIP_FONTS_DIR", "/nonexistent-openclip-fonts")

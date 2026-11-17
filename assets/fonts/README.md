@@ -3,7 +3,9 @@
 Static TrueType files for the eight caption presets in `presets/captions/`.
 Every family is licensed under the SIL Open Font License 1.1 (OFL), which is
 permissive and allows redistribution and embedding. Each family's licence text
-sits next to its TTFs as `<Family>-OFL.txt`.
+lives in the sibling directory `assets/licenses/` as `<Family>-OFL.txt`, **not**
+next to the TTFs: libass opens every name it finds in `fontsdir`, so licence files
+must stay out of it. `make build-wheel` ships both directories inside the wheel.
 
 **Static files only, deliberately.** Variable fonts are not used: libass handles
 synthetic bold and named instances of variable fonts inconsistently, so
@@ -58,4 +60,5 @@ documented size. Skipping that correction makes every caption 18–45 % too smal
 ## Refreshing
 
 Replace files in place, keep the `Family-Weight.ttf` naming, keep the flat
-layout, and update this table. Do not add a file whose licence you have not read.
+layout, put its licence in `assets/licenses/`, and update this table. Do not add
+a file whose licence you have not read.

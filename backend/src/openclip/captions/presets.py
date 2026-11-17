@@ -2,48 +2,40 @@
 
 import json
 import logging
-import os
 from pathlib import Path
 
 from pydantic import ValidationError
 
 from openclip.core.errors import ConfigError
 from openclip.core.models import CaptionStyle
+from openclip.core.resources import env_dir, packaged_resource_dir, repo_dir
 
 LOGGER = logging.getLogger(__name__)
 
 PRESETS_DIR_ENV = "OPENCLIP_PRESETS_DIR"
-_REPO_MARKERS = ("presets/captions", "assets/fonts")
-
-
-def _repo_presets_dir() -> Path | None:
-    """Find ``presets/captions`` by walking up from this module."""
-    current = Path(__file__).resolve().parent
-    for candidate in [current, *current.parents]:
-        if all((candidate / marker).exists() for marker in _REPO_MARKERS):
-            return candidate / "presets" / "captions"
-    return None
+_PRESETS_RELATIVE = "presets/captions"
 
 
 def presets_dir(directory: Path | str | None = None) -> Path:
-    """Resolve the preset directory: argument, ``OPENCLIP_PRESETS_DIR``, then the repo copy."""
+    """Resolve the preset directory.
+
+    Order: explicit argument, ``OPENCLIP_PRESETS_DIR``, installed package data,
+    then the repository copy.
+    """
     if directory is not None:
         candidate = Path(directory).expanduser()
         if not candidate.is_dir():
             raise ConfigError(f"Preset directory {candidate} does not exist.")
         return candidate
-    override = os.environ.get(PRESETS_DIR_ENV)
-    if override:
-        candidate = Path(override).expanduser()
-        if not candidate.is_dir():
-            raise ConfigError(f"{PRESETS_DIR_ENV}={override!r} is not a directory.")
-        return candidate
-    repo_dir = _repo_presets_dir()
-    if repo_dir is None or not repo_dir.is_dir():
-        raise ConfigError(
-            "Caption presets not found. Set OPENCLIP_PRESETS_DIR to a directory of JSON presets."
-        )
-    return repo_dir
+    override = env_dir(PRESETS_DIR_ENV)
+    if override is not None:
+        return override
+    for candidate in (packaged_resource_dir(_PRESETS_RELATIVE), repo_dir(_PRESETS_RELATIVE)):
+        if candidate is not None:
+            return candidate
+    raise ConfigError(
+        "Caption presets not found. Set OPENCLIP_PRESETS_DIR to a directory of JSON presets."
+    )
 
 
 def load_style(path: Path) -> CaptionStyle:
