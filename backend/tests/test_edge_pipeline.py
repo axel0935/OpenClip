@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from openclip.core.config import Settings
-from openclip.core.errors import AnalysisError
+from openclip.core.errors import AnalysisError, OpenClipError
 from openclip.core.models import (
     Clip,
     ClipSource,
@@ -223,7 +223,7 @@ def test_resume_revalidates_limits_against_the_current_config(tmp_path: Path, mo
     too_long = _media(duration=7200.0)
     (workdir / "media.json").write_text(too_long.model_dump_json())
     _patch_stages(monkeypatch)
-    with pytest.raises(Exception):
+    with pytest.raises(OpenClipError):
         pipe.execute(job)
     final = pipe.job(job.id)
     assert final is not None and final.error is not None
@@ -287,7 +287,7 @@ def test_stage_failures_persist_a_coded_terminal_state(
     else:
         _patch_stages(monkeypatch, analyze=boom)
 
-    with pytest.raises(Exception):
+    with pytest.raises(OpenClipError):
         pipe.execute(job)
     final = pipe.job(job.id)
     assert final is not None
@@ -310,7 +310,7 @@ def test_empty_transcript_fails_with_no_speech(tmp_path: Path, monkeypatch) -> N
         raise TranscriptionFailure("no_speech", "No speech was detected in the audio.")
 
     monkeypatch.setattr(orch, "run_transcribe", strict_transcribe)
-    with pytest.raises(Exception):
+    with pytest.raises(OpenClipError):
         pipe.execute(job)
     final = pipe.job(job.id)
     assert final is not None and final.error is not None
@@ -328,7 +328,7 @@ def test_missing_asr_extra_adds_an_install_hint(tmp_path: Path, monkeypatch) -> 
             TranscriptionFailure("asr_unavailable", "faster-whisper is not installed.")
         ),
     )
-    with pytest.raises(Exception):
+    with pytest.raises(OpenClipError):
         pipe.execute(job)
     final = pipe.job(job.id)
     assert final is not None and final.error is not None
@@ -386,16 +386,12 @@ def test_disk_full_during_render_is_reported_as_disk_full(tmp_path: Path, monkey
         raise RenderFailure("disk_full", "Not enough space in the data folder for this render.")
 
     monkeypatch.setattr(orch, "render_clip", failing, raising=False)
+
     # Route the fake render through the real artifact writer so the failure path runs.
-    monkeypatch.setattr(
-        orch,
-        "_render_one_clip",
-        lambda job_, clip, media, transcript, crop, style, workdir, settings_, bus, cancel, progress_fn=None: (
-            (_ for _ in ()).throw(
-                RenderFailure("disk_full", "Not enough space in the data folder for this render.")
-            )
-        ),
-    )
+    def failing_render(*_a, **_k):
+        raise RenderFailure("disk_full", "Not enough space in the data folder for this render.")
+
+    monkeypatch.setattr(orch, "_render_one_clip", failing_render)
     final = pipe.execute(job)
     # A per-clip failure is recorded, the job itself still completes.
     assert final.status == JobStatus.COMPLETED
