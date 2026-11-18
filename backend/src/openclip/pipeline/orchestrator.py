@@ -68,6 +68,12 @@ _EXTRA_HINTS = {
 }
 
 
+class Cancelled(OpenClipError):
+    """A stage stopped because the user cancelled the job."""
+
+    code = "cancelled"
+
+
 class Pipeline:
     """Owns the job queue, event bus and stage execution for one process."""
 
@@ -79,6 +85,7 @@ class Pipeline:
         self._rerender_locks_guard = threading.Lock()
         # Non-fatal per-run notes (non-English source, low-memory LLM skip).
         self.language_warning: str | None = None
+        self.llm_skip_reason: str | None = None
         # Jobs deleted while their worker still runs must not be resurrected.
         self._deleted_jobs: set[str] = set()
         self._deleted_guard = threading.Lock()
@@ -222,7 +229,7 @@ class Pipeline:
         try:
             self._run(job, cancel or threading.Event())
         except OpenClipError as exc:
-            self._finish_failure(job, exc)
+            self._finish_failure(job, exc, cancel)
             raise
         except Exception as exc:  # noqa: BLE001
             log.exception("job %s failed", job.id)
@@ -234,15 +241,20 @@ class Pipeline:
             raise
         return store.load_job(self.settings, job.id) or job
 
-    def _finish_failure(self, job: Job, exc: OpenClipError) -> None:
+    def _finish_failure(
+        self, job: Job, exc: OpenClipError, cancel: threading.Event | None = None
+    ) -> None:
         """Persist a terminal state for a failed or cancelled run.
 
         A cancellation is not a failure: the contract has a dedicated
         ``cancelled`` status, and the UI renders it as a user action rather than
-        as an error banner.
+        as an error banner. Cancellation is detected from the error code *or*
+        from the request flag, because several stages raise a plain
+        :class:`OpenClipError` when they observe it.
         """
         code = getattr(exc, "code", "pipeline_failed")
-        if code == "cancelled":
+        cancelled = code == "cancelled" or (cancel is not None and cancel.is_set())
+        if cancelled:
             job.message = str(exc)
             self._finish(job, JobStatus.CANCELLED, None)
             return
@@ -260,7 +272,7 @@ class Pipeline:
         try:
             self._run(job, cancel)
         except OpenClipError as exc:
-            self._finish_failure(job, exc)
+            self._finish_failure(job, exc, cancel)
         except Exception as exc:  # noqa: BLE001 - jobs must never kill the worker
             log.exception("job %s failed", job_id)
             self._finish(
@@ -279,6 +291,7 @@ class Pipeline:
         progress = self._make_progress(job)
         self._stage_box = {"stage": Stage.INGEST}
         self.language_warning = None
+        self.llm_skip_reason = None
         media = self._stage_ingest(job, workdir, progress, cancel)
         transcript = self._stage_transcribe(job, media, workdir, progress, cancel)
         clips = self._stage_analyze(job, transcript, media, workdir, progress, cancel)
@@ -322,10 +335,16 @@ class Pipeline:
                 )
                 self._save(job)
             except OpenClipError as exc:
-                clip_errors.append(f"{clip.id}: {exc}")
-                log.warning("clip %s failed: %s", clip.id, exc)
+                # A cancelled clip is not a render failure: stop the whole job
+                # and let the runner persist ``cancelled``.
+                if getattr(exc, "code", "") == "cancelled" or cancel.is_set():
+                    raise
+                code = getattr(exc, "code", "render_failed")
+                clip_errors.append(f"{clip.id} ({code}): {exc}")
+                log.warning("clip %s failed (%s): %s", clip.id, code, exc)
                 self._save(job)
 
+        _check_cancel(cancel)
         self._set_stage(job, Stage.EXPORT)
         results = [
             {
@@ -345,6 +364,8 @@ class Pipeline:
             notes.append("Clip failures: " + "; ".join(clip_errors))
         if self.language_warning:
             notes.append(self.language_warning)
+        if self.llm_skip_reason:
+            notes.append(self.llm_skip_reason)
         job.message = " ".join(notes) if notes else None
         self._finish(job, JobStatus.COMPLETED, None)
 
@@ -441,10 +462,11 @@ class Pipeline:
         )
         clips_file.write_text(json.dumps([c.model_dump(mode="json") for c in clips]))
         self._advance(job, Stage.SELECT, 1.0, f"Selected {len(clips)} clips")
-        # Keep the resource-guard reason visible after the stage message resets.
-        skip_reason = llm_skip_reason(job.options)
-        if skip_reason is not None:
-            job.message = skip_reason
+        # Keep the resource-guard reason visible after the stage message resets:
+        # it is re-attached to the final job message alongside any language note.
+        self.llm_skip_reason = llm_skip_reason(job.options)
+        if self.llm_skip_reason is not None:
+            job.message = self.llm_skip_reason
             self._save(job)
         return clips
 
@@ -629,7 +651,7 @@ def _render_clip_artifacts(
 
 def _check_cancel(cancel: threading.Event) -> None:
     if cancel.is_set():
-        raise OpenClipError("Job cancelled.")
+        raise Cancelled("Job cancelled.")
 
 
 def _render_one_clip(
