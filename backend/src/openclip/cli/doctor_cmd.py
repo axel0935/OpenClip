@@ -483,6 +483,20 @@ def _llm_models(base_url: str) -> list[str] | None:
     return [str(item["id"]) for item in data if isinstance(item, dict) and item.get("id")]
 
 
+def _memory_guard_hint() -> str:
+    """Explain when auto mode will skip the judge because RAM is short."""
+    from openclip.analyze.service import LLM_MIN_AVAILABLE_BYTES
+    from openclip.core.memory import available_memory_bytes
+
+    available = available_memory_bytes()
+    if available is None or available >= LLM_MIN_AVAILABLE_BYTES:
+        return ""
+    return (
+        f"; only {available / 1024**3:.1f} GiB available, so auto mode will use "
+        "heuristic scores (set analysis_mode=llm to force the judge)"
+    )
+
+
 def _check_llm(settings: Settings) -> Check:
     """Report whether an LLM judge is reachable, without sending any user data."""
     configured = settings.llm_base_url
@@ -509,7 +523,10 @@ def _check_llm(settings: Settings) -> Check:
     installed_recommended = [
         m for m in models if m.split(":")[0] in {r.split(":")[0] for r in RECOMMENDED_LLM_MODELS}
     ]
-    auto = f"; auto mode would use {installed_recommended[0]}" if installed_recommended else ""
+    guard = _memory_guard_hint()
+    auto = (
+        f"; auto mode would use {installed_recommended[0]}{guard}" if installed_recommended else ""
+    )
     if not models:
         return Check(
             "llm",

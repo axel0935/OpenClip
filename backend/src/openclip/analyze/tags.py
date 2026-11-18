@@ -29,6 +29,8 @@ FILLER_TAGS = frozenset(
     basically actually literally gonna wanna kinda sorta
     stuff thing things something somebody someone everybody everyone nobody
     maybe probably definitely really very much many lot lots kind sort bit
+    most more less least every each either neither another other others same
+    different whole entire part parts first second third last next
     """.split()
 )
 

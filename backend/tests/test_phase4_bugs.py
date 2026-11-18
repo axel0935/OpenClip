@@ -58,6 +58,16 @@ def test_hashtags_are_never_padded_with_a_fixed_tag() -> None:
     assert _hashtags("Um uh okay yeah so yes") == []
 
 
+def test_hashtags_skip_quantifiers_and_determiners() -> None:
+    """Real recordings are full of 'most/every/whole'; those are not topics."""
+    tags = _hashtags(
+        "The most important thing about discipline is that you show up every day. "
+        "Most people quit too early. That is the whole secret."
+    )
+    assert "#most" not in tags and "#every" not in tags and "#whole" not in tags
+    assert "#discipline" in tags
+
+
 def test_clean_hashtags_drops_llm_product_and_filler_tags() -> None:
     tags = _clean_hashtags(["#openclip", "#fyp", "#viral"], "focus beats talent")
     assert set(tags) == {"#focus", "#beats", "#talent"}
