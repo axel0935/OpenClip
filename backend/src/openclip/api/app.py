@@ -1,6 +1,7 @@
 """FastAPI application factory implementing the OpenClip HTTP contract."""
 
 import email.utils
+import errno
 import json
 import logging
 import queue
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request, UploadFile, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import (
@@ -62,6 +64,28 @@ log = logging.getLogger(__name__)
 
 _JOB_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _CHUNK = 1024 * 1024
+#: Filesystem name-length limit that is safe on ext4/APFS/NTFS once the upload
+#: directory prefix is added (Linux caps a single component at 255 bytes).
+_MAX_NAME_CHARS = 180
+
+
+def _safe_upload_name(filename: str | None) -> str:
+    """Reduce a client filename to a short, inert, non-empty base name.
+
+    Strips any directory component, replaces characters outside
+    ``[A-Za-z0-9._-]``, caps the length and rejects the ``.``/``..`` names that
+    :class:`pathlib.Path` keeps intact, so a hostile upload name can never
+    resolve to the upload directory itself or overflow the filesystem.
+    """
+    base = Path(filename or "upload.bin").name
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", base).strip(".") or "upload.bin"
+    if safe in (".", ".."):
+        return "upload.bin"
+    if len(safe) > _MAX_NAME_CHARS:
+        suffix = Path(safe).suffix[:16]
+        stem = safe[: _MAX_NAME_CHARS - len(suffix)].rstrip(".") or "upload"
+        safe = f"{stem}{suffix}"
+    return safe
 
 
 def _error(status_code: int, code: str, message: str) -> JSONResponse:
@@ -96,19 +120,34 @@ def _safe_file(path: Path, root: Path) -> Path | None:
     return resolved if resolved.is_file() else None
 
 
+def _parse_last_event_id(raw: str | None) -> int:
+    """Parse an SSE ``Last-Event-ID`` header into a non-negative int."""
+    if not raw:
+        return 0
+    try:
+        return max(0, int(raw.strip()))
+    except ValueError:
+        return 0
+
+
 def _is_terminal_frame(frame: str) -> bool:
     """True when an SSE frame ends the job stream.
 
     ``done`` always terminates; ``error`` terminates only for job-level
     failures — clip-scoped re-render errors carry a ``clip_id`` and must not
-    close the stream.
+    close the stream. Frames are emitted with leading ``id:``/``event:`` lines.
     """
-    if frame.startswith("event: done"):
+    event = next(
+        (line.split(":", 1)[1].strip() for line in frame.splitlines() if line.startswith("event:")),
+        "",
+    )
+    if event == "done":
         return True
-    if not frame.startswith("event: error"):
+    if event != "error":
         return False
+    data_line = next((line for line in frame.splitlines() if line.startswith("data:")), "")
     try:
-        data = json.loads(frame.split("data:", 1)[1])
+        data = json.loads(data_line.split(":", 1)[1])
     except (ValueError, IndexError):
         return True
     return "clip_id" not in data
@@ -186,6 +225,22 @@ def create_app(
         code = getattr(exc, "code", "internal_error")
         return _error(status.HTTP_400_BAD_REQUEST, code, str(exc))
 
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+        """Answer malformed bodies with the shared :class:`ErrorResponse` shape.
+
+        FastAPI's default ``{"detail": [...]}`` is a different shape from every
+        other error in this API and reaches the UI as an unreadable object.
+        """
+        first = exc.errors()[0] if exc.errors() else {}
+        location = ".".join(str(part) for part in first.get("loc", ())[1:]) or "body"
+        reason = str(first.get("msg", "Invalid request"))
+        return _error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "invalid_request",
+            f"Invalid request ({location}): {reason}.",
+        )
+
     @app.exception_handler(ConfigError)
     async def config_error_handler(_: Request, exc: ConfigError) -> JSONResponse:
         return _error(status.HTTP_400_BAD_REQUEST, "config_error", str(exc))
@@ -210,8 +265,7 @@ def create_app(
     )
     async def create_upload(file: UploadFile) -> UploadResponse | JSONResponse:
         """Stream an uploaded file to disk under the data dir."""
-        filename = Path(file.filename or "upload.bin").name
-        safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", filename) or "upload.bin"
+        safe_name = _safe_upload_name(file.filename)
         upload_id = store.new_upload_id()
         target_dir = store.upload_dir(cfg, upload_id)
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -227,14 +281,20 @@ def create_app(
                         target.unlink(missing_ok=True)
                         shutil.rmtree(target_dir, ignore_errors=True)
                         return _error(
-                            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            status.HTTP_413_CONTENT_TOO_LARGE,
                             "too_large",
                             f"Upload exceeds the {cfg.max_upload_mb} MB limit.",
                         )
                     out.write(chunk)
         except OSError as exc:
             shutil.rmtree(target_dir, ignore_errors=True)
-            return _error(status.HTTP_500_INTERNAL_SERVER_ERROR, "io_error", str(exc))
+            code = "disk_full" if exc.errno == errno.ENOSPC else "io_error"
+            message = (
+                "Not enough space in the data folder to store this upload."
+                if code == "disk_full"
+                else str(exc)
+            )
+            return _error(status.HTTP_507_INSUFFICIENT_STORAGE, code, message)
         store.save_upload(cfg, upload_id, safe_name, target, size)
         return UploadResponse(upload_id=upload_id, filename=safe_name, size_bytes=size)
 
@@ -310,16 +370,25 @@ def create_app(
         response_model=None,
         tags=["jobs"],
     )
-    def job_events(job_id: str) -> StreamingResponse | JSONResponse:
-        """Server-sent events stream for job progress."""
+    def job_events(job_id: str, request: Request) -> StreamingResponse | JSONResponse:
+        """Server-sent events stream for job progress.
+
+        Reconnection is supported through the standard ``Last-Event-ID`` header:
+        every frame carries an ``id:`` counter, and a reconnect resumes *after*
+        the last id the client saw. The job-id check happens first so an unknown
+        job still answers 404 instead of opening a stream.
+        """
         result = _get_job_or_404(job_id)
         if isinstance(result, JSONResponse):
             return result
-        q = pipeline.bus.subscribe(job_id)
+        last_seen = _parse_last_event_id(request.headers.get("last-event-id"))
+        q = pipeline.bus.subscribe(job_id, after=last_seen)
 
         def stream() -> Iterator[str]:
-            # Snapshot first so late subscribers see current state immediately.
+            # Snapshot first so late subscribers see current state immediately;
+            # a resuming client already has it and must not see it twice.
             job = pipeline.job(job_id)
+            snapshot: dict[str, Any] = {}
             if job is not None:
                 snapshot = {
                     "job_id": job.id,
@@ -328,7 +397,23 @@ def create_app(
                     "progress": job.progress,
                     "message": job.message,
                 }
-                yield f"event: progress\ndata: {json.dumps(snapshot)}\n\n"
+                if last_seen == 0:
+                    yield f"event: progress\ndata: {json.dumps(snapshot)}\n\n"
+            # Subscribing to a job that already finished must terminate at once:
+            # its ``done``/``error`` frame was published before this subscriber
+            # existed and is therefore not in the fresh subscription's queue.
+            if job is not None and str(job.status) in ("completed", "cancelled"):
+                yield f"event: done\ndata: {json.dumps(snapshot)}\n\n"
+                return
+            if job is not None and str(job.status) == "failed":
+                error = job.error
+                payload = {
+                    "job_id": job.id,
+                    "code": error.code if error else "job_failed",
+                    "message": error.message if error else "Job failed.",
+                }
+                yield f"event: error\ndata: {json.dumps(payload)}\n\n"
+                return
             try:
                 while True:
                     try:
@@ -342,7 +427,8 @@ def create_app(
             finally:
                 pipeline.bus.unsubscribe(job_id, q)
 
-        return StreamingResponse(stream(), media_type="text/event-stream")
+        headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+        return StreamingResponse(stream(), media_type="text/event-stream", headers=headers)
 
     @app.patch(
         "/api/jobs/{job_id}/clips/{clip_id}",

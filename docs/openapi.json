@@ -1769,7 +1769,7 @@
     },
     "/api/jobs/{job_id}/events": {
       "get": {
-        "description": "Server-sent events stream for job progress.",
+        "description": "Server-sent events stream for job progress.\n\nReconnection is supported through the standard ``Last-Event-ID`` header:\nevery frame carries an ``id:`` counter, and a reconnect resumes *after*\nthe last id the client saw. The job-id check happens first so an unknown\njob still answers 404 instead of opening a stream.",
         "operationId": "job_events_api_jobs__job_id__events_get",
         "parameters": [
           {

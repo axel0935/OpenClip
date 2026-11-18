@@ -65,27 +65,50 @@ The API allows CORS only from `http://localhost:5173` and `http://127.0.0.1:5173
 
 ## Server-sent events
 
-`GET /api/jobs/{job_id}/events` uses `text/event-stream`. Each event is UTF-8 JSON in a `data:` line. Job-scoped payloads carry `job_id`; clip events add `clip_id` and/or `clip`:
+`GET /api/jobs/{job_id}/events` uses `text/event-stream`. Every frame carries a monotonic `id:` line (per process) so a client can reconnect with the standard `Last-Event-ID` header; the last ~64 frames per job are replayed, and a reconnect with `Last-Event-ID: n` resumes after frame `n` (a fresh connection gets a `progress` snapshot first, a resuming one does not). Each event is UTF-8 JSON in a `data:` line. Job-scoped payloads carry `job_id`; clip events add `clip_id` and/or `clip`:
 
 ```text
+id: 41
 event: progress
 data: {"job_id":"job-1","status":"running","stage":"transcribe","progress":0.4,"message":"Transcribing"}
 
+id: 42
 event: clip_ready
 data: {"job_id":"job-1","clip":{"id":"clip-1","start":0.0,"end":30.0,"score":90.0,"title":"Key idea","hook":"Watch this","hashtags":[],"rationale":"Strong hook","source":"heuristic","output_file":".../clip.mp4","thumbnail":".../thumbnail.jpg"}}
 
+id: 43
 event: done
 data: {"job_id":"job-1","status":"completed","stage":"export","progress":1.0,"message":"Render complete"}
 
+id: 44
 event: error
 data: {"job_id":"job-1","code":"render_failed","message":"FFmpeg exited with an error."}
 
 # clip-scoped re-render failure (stream stays open):
+id: 45
 event: error
 data: {"job_id":"job-1","clip_id":"clip-1","code":"render_failed","message":"ffmpeg failed with exit code 1."}
 ```
 
-`clip_ready` is emitted once per clip during the render stage and again after a successful `PATCH` re-render of that clip. A clip-scoped `error` does not terminate the stream; a job-level `error` or `done` does.
+`clip_ready` is emitted once per clip during the render stage and again after a successful `PATCH` re-render of that clip. `done` carries the final `status` — `completed` **or** `cancelled` — and always terminates the stream; a job-level `error` also terminates it, while a clip-scoped `error` does not.
+
+## Job status
+
+| Status | Meaning | `error` |
+| --- | --- | --- |
+| `queued` | Accepted, waiting for the single worker. | `null` |
+| `running` | A stage is executing; `stage` and `progress` advance. | `null` |
+| `completed` | All clips rendered (individual clip failures are reported in `message`). | `null` |
+| `cancelled` | The user cancelled it; no terminal error. Resumable from its stage markers. | `null` |
+| `failed` | Terminal failure (`interrupted`, `no_speech`, `ffmpeg_missing`, …). | set |
+
+A job left `running`/`queued` by a previous process is marked `failed` with code `interrupted` at startup and can be resumed.
+
+## HTTP errors and uploads
+
+Successful responses use the documented models. Every error response is `ErrorResponse{code, message}` — including request validation: a malformed JSON body yields `422 {"code":"invalid_request", …}` instead of FastAPI's default `{"detail": [...]}`. `code` values used by the API: `not_found`, `invalid_source`, `too_large`, `io_error`, `disk_full`, `not_ready`, `rerender_in_progress`, `invalid_range`, `invalid_duration`, `out_of_range`, `unknown_style`, `invalid_request`, plus the job error codes above.
+
+`POST /api/uploads` accepts one multipart field named `file` and enforces `OPENCLIP_MAX_UPLOAD_MB`. The stored name is the client base name reduced to `[A-Za-z0-9._-]`, dot-trimmed, capped at 180 characters, with `.`/`..` replaced by `upload.bin`; the response `filename` is that stored name. An upload that would exceed the limit is rejected with `413 too_large` and its partial directory removed; a filesystem `ENOSPC` answers `507 disk_full`, also with nothing left behind.
 
 ## Clip re-render (PATCH)
 

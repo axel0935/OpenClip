@@ -22,17 +22,33 @@ class JobHandle:
 
 
 class EventBus:
-    """Thread-safe publish/subscribe bus for SSE consumers."""
+    """Thread-safe publish/subscribe bus for SSE consumers.
 
-    def __init__(self, max_queue: int = 256) -> None:
+    Every published frame is prefixed with a monotonic ``id:`` line so browsers
+    can resume with ``Last-Event-ID``. Recent frames are kept in a small
+    per-job replay buffer; subscribing with ``after=<id>`` replays only the
+    frames the client has not seen.
+    """
+
+    def __init__(self, max_queue: int = 256, replay: int = 64) -> None:
         self._subs: dict[str, list[queue.Queue[str]]] = {}
         self._lock = threading.Lock()
         self._max = max_queue
+        self._replay = replay
+        self._next_id = 0
+        self._history: dict[str, deque[tuple[int, str]]] = {}
 
-    def subscribe(self, job_id: str) -> queue.Queue[str]:
-        """Register a subscriber queue for a job."""
+    def subscribe(self, job_id: str, after: int = 0) -> queue.Queue[str]:
+        """Register a subscriber; ``after`` replays later frames when known."""
         q: queue.Queue[str] = queue.Queue(maxsize=self._max)
         with self._lock:
+            if after > 0:
+                for frame_id, frame in self._history.get(job_id, ()):
+                    if frame_id > after:
+                        try:
+                            q.put_nowait(frame)
+                        except queue.Full:
+                            break
             self._subs.setdefault(job_id, []).append(q)
         return q
 
@@ -46,19 +62,23 @@ class EventBus:
                 self._subs.pop(job_id, None)
 
     def publish(self, job_id: str, event: str, data: dict) -> None:
-        """Push an SSE frame ``event: <name>\\ndata: <json>\\n\\n`` to subscribers."""
-        frame = f"event: {event}\ndata: {json.dumps(data)}\n\n"
+        """Push an SSE frame ``id: <n>\\nevent: <name>\\ndata: <json>\\n\\n``."""
         with self._lock:
+            self._next_id += 1
+            frame_id = self._next_id
+            frame = f"id: {frame_id}\nevent: {event}\ndata: {json.dumps(data)}\n\n"
+            history = self._history.setdefault(job_id, deque(maxlen=self._replay))
+            history.append((frame_id, frame))
             subs = list(self._subs.get(job_id, []))
-        for q in subs:
-            try:
-                q.put_nowait(frame)
-            except queue.Full:
+            for q in subs:
                 try:
-                    q.get_nowait()
                     q.put_nowait(frame)
-                except queue.Empty:
-                    pass
+                except queue.Full:
+                    try:
+                        q.get_nowait()
+                        q.put_nowait(frame)
+                    except queue.Empty:
+                        pass
 
 
 class JobQueue:

@@ -202,6 +202,11 @@ export interface paths {
         /**
          * Job Events
          * @description Server-sent events stream for job progress.
+         *
+         *     Reconnection is supported through the standard ``Last-Event-ID`` header:
+         *     every frame carries an ``id:`` counter, and a reconnect resumes *after*
+         *     the last id the client saw. The job-id check happens first so an unknown
+         *     job still answers 404 instead of opening a stream.
          */
         get: operations["job_events_api_jobs__job_id__events_get"];
         put?: never;

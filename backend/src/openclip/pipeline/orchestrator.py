@@ -79,6 +79,9 @@ class Pipeline:
         self._rerender_locks_guard = threading.Lock()
         # Non-fatal per-run notes (non-English source, low-memory LLM skip).
         self.language_warning: str | None = None
+        # Jobs deleted while their worker still runs must not be resurrected.
+        self._deleted_jobs: set[str] = set()
+        self._deleted_guard = threading.Lock()
         store.mark_interrupted(self.settings)
 
     def clip_rerender_lock(self, job_id: str, clip_id: str) -> threading.Lock:
@@ -107,8 +110,15 @@ class Pipeline:
         return store.list_jobs(self.settings)
 
     def delete(self, job_id: str) -> bool:
-        """Cancel and delete a job plus its files."""
+        """Cancel and delete a job plus its files.
+
+        A job that is still running would otherwise re-insert its own row from
+        its next checkpoint, so the id is remembered and every later write for
+        it is dropped.
+        """
         self.cancel(job_id)
+        with self._deleted_guard:
+            self._deleted_jobs.add(job_id)
         existed = store.delete_job_row(self.settings, job_id)
         store.delete_job_files(self.settings, job_id)
         return existed
@@ -212,10 +222,7 @@ class Pipeline:
         try:
             self._run(job, cancel or threading.Event())
         except OpenClipError as exc:
-            code = getattr(exc, "code", "pipeline_failed")
-            hint = _EXTRA_HINTS.get(code)
-            message = f"{exc} ({hint})" if hint else str(exc)
-            self._finish(job, JobStatus.FAILED, JobError(code=code, message=message))
+            self._finish_failure(job, exc)
             raise
         except Exception as exc:  # noqa: BLE001
             log.exception("job %s failed", job.id)
@@ -227,6 +234,22 @@ class Pipeline:
             raise
         return store.load_job(self.settings, job.id) or job
 
+    def _finish_failure(self, job: Job, exc: OpenClipError) -> None:
+        """Persist a terminal state for a failed or cancelled run.
+
+        A cancellation is not a failure: the contract has a dedicated
+        ``cancelled`` status, and the UI renders it as a user action rather than
+        as an error banner.
+        """
+        code = getattr(exc, "code", "pipeline_failed")
+        if code == "cancelled":
+            job.message = str(exc)
+            self._finish(job, JobStatus.CANCELLED, None)
+            return
+        hint = _EXTRA_HINTS.get(code)
+        message = f"{exc} ({hint})" if hint else str(exc)
+        self._finish(job, JobStatus.FAILED, JobError(code=code, message=message))
+
     def _run_guarded(self, job_id: str) -> None:
         """Queue entry point: run the pipeline and always persist terminal state."""
         job = store.load_job(self.settings, job_id)
@@ -237,10 +260,7 @@ class Pipeline:
         try:
             self._run(job, cancel)
         except OpenClipError as exc:
-            code = getattr(exc, "code", "pipeline_failed")
-            hint = _EXTRA_HINTS.get(code)
-            message = f"{exc} ({hint})" if hint else str(exc)
-            self._finish(job, JobStatus.FAILED, JobError(code=code, message=message))
+            self._finish_failure(job, exc)
         except Exception as exc:  # noqa: BLE001 - jobs must never kill the worker
             log.exception("job %s failed", job_id)
             self._finish(
@@ -458,6 +478,9 @@ class Pipeline:
         self._save(job)
 
     def _save(self, job: Job) -> None:
+        with self._deleted_guard:
+            if job.id in self._deleted_jobs:
+                return
         job.updated_at = store.utcnow()
         store.save_job(self.settings, job)
 
@@ -466,11 +489,8 @@ class Pipeline:
         job.error = error
         job.progress = 1.0 if status == JobStatus.COMPLETED else job.progress
         self._save(job)
-        event = (
-            "done"
-            if status == JobStatus.COMPLETED
-            else ("error" if status == JobStatus.FAILED else "progress")
-        )
+        # ``done`` always terminates the SSE stream and carries the final
+        # status; only a job-level ``error`` closes it on failure.
         if status == JobStatus.FAILED:
             self.bus.publish(
                 job.id,
@@ -482,7 +502,7 @@ class Pipeline:
                 },
             )
         else:
-            self.bus.publish(job.id, event, _job_event(job))
+            self.bus.publish(job.id, "done", _job_event(job))
 
 
 def _order(stage: Stage) -> int:

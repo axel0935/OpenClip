@@ -1,5 +1,6 @@
 """Render stage: ffmpeg MP4 output, thumbnails, proxies and encoder choice."""
 
+import errno
 import json
 import logging
 import subprocess
@@ -36,9 +37,40 @@ def _report(progress: ProgressCallback | None, fraction: float, message: str) ->
     (progress or _no_op)(max(0.0, min(1.0, fraction)), message)
 
 
+class RenderCancelled(OpenClipError):
+    """A render stopped on request; carries the shared ``cancelled`` code."""
+
+    code = "cancelled"
+
+
+class RenderFailure(OpenClipError):
+    """A render failed with a machine-readable code (``render_failed``/``disk_full``)."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 def _check_cancel(cancel: threading.Event | None) -> None:
     if cancel is not None and cancel.is_set():
-        raise OpenClipError("Rendering cancelled.")
+        raise RenderCancelled("Rendering cancelled.")
+
+
+def _is_disk_full(out_path: Path) -> bool:
+    """Return True when ``out_path``'s directory cannot take a small write.
+
+    ffmpeg reports only a generic non-zero exit for ``ENOSPC``, so the free
+    space is probed after the fact. Any other probe error is reported as
+    "not a disk problem" so the original failure is preserved.
+    """
+    probe = out_path.parent / ".openclip-space-probe"
+    try:
+        probe.write_bytes(b"0")
+    except OSError as exc:
+        return exc.errno == errno.ENOSPC
+    finally:
+        probe.unlink(missing_ok=True)
+    return False
 
 
 def _run_ffmpeg(
@@ -49,8 +81,14 @@ def _run_ffmpeg(
     cancel: threading.Event | None = None,
     total_seconds: float = 0.0,
     progress_range: tuple[float, float] = (0.0, 1.0),
+    out_path: Path | None = None,
 ) -> None:
-    """Run ffmpeg with ``-progress pipe:1`` parsing and cancellation."""
+    """Run ffmpeg with ``-progress pipe:1`` parsing and cancellation.
+
+    ``out_path`` enables the post-failure disk check: a generic non-zero exit
+    on a full filesystem becomes a ``disk_full`` error so the UI can show the
+    right message instead of "render failed".
+    """
     try:
         proc = subprocess.Popen(
             cmd,
@@ -80,7 +118,9 @@ def _run_ffmpeg(
                 proc.kill()
             proc.wait(timeout=30)
     if proc.returncode != 0:
-        raise OpenClipError(f"ffmpeg failed with exit code {proc.returncode}.")
+        if out_path is not None and _is_disk_full(out_path):
+            raise RenderFailure("disk_full", "Not enough space in the data folder for this render.")
+        raise RenderFailure("render_failed", f"ffmpeg failed with exit code {proc.returncode}.")
 
 
 def _encoder_override() -> EncoderName | None:
@@ -285,6 +325,7 @@ def render_clip(
             cancel=cancel,
             total_seconds=duration,
             progress_range=(0.02, 0.98),
+            out_path=tmp,
         )
     except OpenClipError:
         tmp.unlink(missing_ok=True)
@@ -388,7 +429,9 @@ def render_preview(
         str(out_path),
     ]
     try:
-        _run_ffmpeg(cmd, settings=settings, cancel=cancel, total_seconds=duration)
+        _run_ffmpeg(
+            cmd, settings=settings, cancel=cancel, total_seconds=duration, out_path=out_path
+        )
     except OpenClipError:
         out_path.unlink(missing_ok=True)
         raise
