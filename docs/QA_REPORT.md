@@ -254,6 +254,8 @@ Manual end-to-end checks (all with a temporary `/tmp/ocqa2` data dir, no committ
 * `kill -9` mid-job → restart marked the job `failed`/`interrupted` with its artifacts
   intact; re-submitting the same job resumed and completed with no duplicate outputs.
 * Silent 30 s source → `no_speech`.
+* A 0.6 s source with only a tone → `no_speech` (no speech, not a crash); a video with no
+  audio track → `no_audio`. Both exit 1 and create no output directory.
 
 ## 7. What could not be tested
 
@@ -265,6 +267,7 @@ Manual end-to-end checks (all with a temporary `/tmp/ocqa2` data dir, no committ
 | **Real LLM judge** | explicitly out of scope for this pass | the memory guard and the judge call path are covered with fakes; judge quality is unchanged from Step 10 |
 | **Long media (> 10 min) real transcription** | instruction: no long runs, no model pulls | the duration guard was tested with a faked probe; sustained-memory behaviour on a 4-hour input is unverified |
 | **True disk-full filesystem** | can't shrink the volume safely | `ENOSPC` is simulated via patched writes; `_is_disk_full()` also verified against a read-only directory (returns False, so EACCES is not mistaken for a full disk) |
+| **Failed-job disk retention** | by design, not a defect | a failed job keeps its directory (media copy, `audio.wav`, `media.json`, stage artifacts) so it can be resumed. Two failed runs left 68 KB; a long source that fails late keeps its full copy. That is the intended resume trade-off and should be covered by `openclip clean` (issue #1). |
 | **Windows / macOS filesystem behaviour** | Linux-only host | name-length cap (180) and non-ASCII sanitisation are chosen to be portable but unverified off Linux |
 
 ## 8. Assumptions recorded
