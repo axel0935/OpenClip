@@ -212,6 +212,24 @@ def test_cancel_during_each_stage_ends_as_cancelled(
     assert final is not None and final.error is None
 
 
+def test_resume_revalidates_limits_against_the_current_config(tmp_path: Path, monkeypatch) -> None:
+    """A cached media.json must not bypass a limit that was lowered since."""
+    store.reset_engine()
+    settings = _settings(tmp_path)
+    settings.max_video_minutes = 1
+    pipe = Pipeline(settings)
+    job = _job(settings)
+    workdir = store.job_dir(settings, job.id)
+    too_long = _media(duration=7200.0)
+    (workdir / "media.json").write_text(too_long.model_dump_json())
+    _patch_stages(monkeypatch)
+    with pytest.raises(Exception):
+        pipe.execute(job)
+    final = pipe.job(job.id)
+    assert final is not None and final.error is not None
+    assert final.error.code == "too_long"
+
+
 def test_cancel_queued_job_never_starts_it(tmp_path: Path, monkeypatch) -> None:
     store.reset_engine()
     settings = _settings(tmp_path)

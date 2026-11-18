@@ -27,6 +27,7 @@ from openclip.core.models import (
     Transcript,
 )
 from openclip.ingest import ingest as run_ingest
+from openclip.ingest.ffprobe import check_ingest_limits
 from openclip.pipeline import store
 from openclip.pipeline.queue import EventBus, JobQueue
 from openclip.transcribe import transcribe as run_transcribe
@@ -393,6 +394,9 @@ class Pipeline:
         media_file = workdir / "media.json"
         if media_file.is_file():
             media = MediaInfo.model_validate_json(media_file.read_text())
+            # Re-validate on resume: the limit may have been lowered since the
+            # earlier run ingested this media, and the guard must still hold.
+            check_ingest_limits(media, self.settings)
             job.media = media
             self._save(job)
             self._advance(job, Stage.INGEST, 1.0, "Media already ingested (resumed)")
