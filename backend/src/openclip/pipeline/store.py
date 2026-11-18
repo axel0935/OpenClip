@@ -171,6 +171,20 @@ def get_upload(settings: Settings, upload_id: str) -> UploadRow | None:
         return session.get(UploadRow, upload_id)
 
 
+def find_upload_by_path(settings: Settings, path: str | Path) -> UploadRow | None:
+    """Return the upload row whose stored file is ``path``, if any.
+
+    Job sources keep the resolved upload path, so this is how a deleted job
+    finds the upload copy it was created from and removes it.
+    """
+    from sqlmodel import select
+
+    engine = _get_engine(settings)
+    with Session(engine) as session:  # type: ignore[arg-type]
+        rows = session.exec(select(UploadRow).where(UploadRow.path == str(path))).all()
+        return rows[0] if rows else None
+
+
 def upload_dir(settings: Settings, upload_id: str) -> Path:
     """Return the directory holding one upload."""
     return settings.data_dir / "uploads" / upload_id

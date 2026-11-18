@@ -121,13 +121,30 @@ class Pipeline:
 
         A job that is still running would otherwise re-insert its own row from
         its next checkpoint, so the id is remembered and every later write for
-        it is dropped.
+        it is dropped. The upload copy is removed too, but only when no other
+        job still references it: every job copies its media into its own
+        directory, so keeping the original would leak one full source file per
+        deleted job, while removing a shared one would break a queued sibling.
         """
         self.cancel(job_id)
         with self._deleted_guard:
             self._deleted_jobs.add(job_id)
+        job = store.load_job(self.settings, job_id)
+        source_value = job.source.value if job is not None else None
+        source_type = job.source.type if job is not None else None
         existed = store.delete_job_row(self.settings, job_id)
         store.delete_job_files(self.settings, job_id)
+        if source_type == "upload" and source_value:
+            still_used = any(
+                other.id != job_id
+                and other.source.type == "upload"
+                and other.source.value == source_value
+                for other in store.list_jobs(self.settings)
+            )
+            if not still_used:
+                upload = store.find_upload_by_path(self.settings, source_value)
+                if upload is not None:
+                    store.delete_upload(self.settings, upload.id)
         return existed
 
     def rerender_clip(

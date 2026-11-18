@@ -426,6 +426,42 @@ def test_delete_during_run_does_not_resurrect_the_job(tmp_path: Path, monkeypatc
     assert not (settings.data_dir / "jobs" / job.id).exists()
 
 
+def test_delete_releases_the_upload_copy(tmp_path: Path, monkeypatch) -> None:
+    """Deleting a job must not leak the uploaded source file."""
+    store.reset_engine()
+    settings = _settings(tmp_path)
+    pipe = Pipeline(settings)
+    upload_dir = store.upload_dir(settings, "up-cleanup")
+    upload_dir.mkdir(parents=True)
+    stored = upload_dir / "v.mp4"
+    stored.write_bytes(b"source bytes")
+    store.save_upload(settings, "up-cleanup", "v.mp4", stored, 12)
+    job = _job(settings)
+    job.source = JobSource(type="upload", value=str(stored))
+    store.save_job(settings, job)
+    assert pipe.delete(job.id) is True
+    assert store.get_upload(settings, "up-cleanup") is None
+    assert not upload_dir.exists()
+
+
+def test_delete_keeps_an_upload_still_used_by_another_job(tmp_path: Path) -> None:
+    store.reset_engine()
+    settings = _settings(tmp_path)
+    pipe = Pipeline(settings)
+    upload_dir = store.upload_dir(settings, "up-shared")
+    upload_dir.mkdir(parents=True)
+    stored = upload_dir / "v.mp4"
+    stored.write_bytes(b"source bytes")
+    store.save_upload(settings, "up-shared", "v.mp4", stored, 12)
+    first, second = _job(settings), _job(settings)
+    for job in (first, second):
+        job.source = JobSource(type="upload", value=str(stored))
+        store.save_job(settings, job)
+    assert pipe.delete(first.id) is True
+    assert store.get_upload(settings, "up-shared") is not None
+    assert stored.is_file()
+
+
 def test_delete_running_job_via_api_returns_204_and_leaves_no_row(client) -> None:
     c, pipe, settings = client
     job = _job(settings, JobStatus.RUNNING)
