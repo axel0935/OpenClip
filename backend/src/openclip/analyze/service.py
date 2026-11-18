@@ -15,8 +15,10 @@ from openclip.analyze.llm import (
 )
 from openclip.analyze.scoring import STOPWORDS
 from openclip.analyze.select import select_clips
+from openclip.analyze.tags import is_banned_tag
 from openclip.core.config import Settings
 from openclip.core.errors import AnalysisError
+from openclip.core.memory import available_memory_bytes
 from openclip.core.models import (
     Candidate,
     Clip,
@@ -34,6 +36,11 @@ _LLM_TOP_K = 12
 _TITLE_MAX = 60
 _WORD_RE = re.compile(r"[a-zA-Z']+")
 
+# The local judge needs roughly 2-3 GB on the reference machine (a 2B model plus
+# its KV cache). Auto mode refuses to start it below this threshold so a low-RAM
+# box degrades to heuristic scoring instead of thrashing swap for minutes.
+LLM_MIN_AVAILABLE_BYTES = 3 * 1024 * 1024 * 1024
+
 # Small English profanity list for display metadata only (titles, hooks,
 # hashtags). Clip text and captions are never altered; masked words render as
 # e.g. "f***" in titles/hooks and are dropped from hashtags. English only.
@@ -48,9 +55,6 @@ _PROFANITY_RE = re.compile(
     r"\b(" + "|".join(sorted(_PROFANITY, key=len, reverse=True)) + r")\b",
     re.IGNORECASE,
 )
-
-# Engagement-bait tags that carry no topic information.
-_HASHTAG_FILLER = frozenset({"fyp", "viral", "trending", "xyzbca", "xyz", "follow", "like"})
 
 
 def _no_op(_fraction: float, _message: str) -> None:
@@ -125,8 +129,14 @@ def _hook_candidates(sentences: list[str]) -> str:
     return min(sentences[:4], key=_rank)
 
 
-def _hashtags(text: str, count: int = 4) -> list[str]:
-    """Derive 3-5 clean topic hashtags from the most frequent content words."""
+def _tag_words(text: str) -> list[str]:
+    """Rank clean topic words of ``text`` by frequency, then alphabetically.
+
+    A word qualifies when it is alphabetic, longer than three characters, not a
+    stopword, not English profanity and not in the banned tag vocabulary
+    (engagement bait, product and platform names) — so ``#openclip`` can never
+    be produced from a transcript that merely mentions the tool.
+    """
     freq: dict[str, int] = {}
     for word in _WORD_RE.findall(text.lower()):
         word = word.replace("'", "")
@@ -135,18 +145,26 @@ def _hashtags(text: str, count: int = 4) -> list[str]:
             and word.isalpha()
             and word not in STOPWORDS
             and word not in _PROFANITY
-            and word not in _HASHTAG_FILLER
+            and not is_banned_tag(word)
         ):
             freq[word] = freq.get(word, 0) + 1
-    ranked = sorted(freq.items(), key=lambda kv: (-kv[1], kv[0]))
-    tags = [f"#{w}" for w, _ in ranked[:count]]
-    while len(tags) < 3:
-        tags.append("#openclip")
-    return tags[:5]
+    return [word for word, _ in sorted(freq.items(), key=lambda kv: (-kv[1], kv[0]))]
+
+
+def _hashtags(text: str, count: int = 4) -> list[str]:
+    """Derive up to ``count`` clean topic hashtags from content words.
+
+    Fewer than three tags are acceptable: padding with a product or filler tag
+    would be worse than a short list, so the list is never filled artificially.
+    """
+    return [f"#{word}" for word in _tag_words(text)[:count]]
 
 
 def _clean_hashtags(tags: list[str], fallback_text: str) -> list[str]:
-    """Keep only clean lowercase topic tags; top up from ``fallback_text``."""
+    """Keep only clean lowercase topic tags; top up from ``fallback_text``.
+
+    Never pads with a fixed tag: an empty or short list is returned as is.
+    """
     cleaned: list[str] = []
     for tag in tags:
         word = tag.lstrip("#").lower()
@@ -154,7 +172,7 @@ def _clean_hashtags(tags: list[str], fallback_text: str) -> list[str]:
             word
             and re.fullmatch(r"[a-z0-9_]+", word)
             and word not in _PROFANITY
-            and word not in _HASHTAG_FILLER
+            and not is_banned_tag(word)
             and f"#{word}" not in cleaned
         ):
             cleaned.append(f"#{word}")
@@ -163,8 +181,6 @@ def _clean_hashtags(tags: list[str], fallback_text: str) -> list[str]:
             break
         if tag not in cleaned:
             cleaned.append(tag)
-    while len(cleaned) < 3:
-        cleaned.append("#openclip")
     return cleaned[:5]
 
 
@@ -265,6 +281,26 @@ def _clip_heuristic(candidate: Candidate, min_clip_seconds: float) -> Clip:
     )
 
 
+def llm_skip_reason(cfg: JobOptions, available_bytes: int | None = None) -> str | None:
+    """Return a short reason when auto mode must skip the LLM judge.
+
+    Only ``analysis_mode=auto`` is guarded: an explicit ``llm`` request still
+    starts the judge (the caller asked for it) and ``heuristic`` never uses it.
+    ``None`` means "carry on normally".
+    """
+    if cfg.analysis_mode != "auto":
+        return None
+    free = available_memory_bytes() if available_bytes is None else available_bytes
+    if free is None or free >= LLM_MIN_AVAILABLE_BYTES:
+        return None
+    return (
+        f"Low memory: {free / 1024**3:.1f} GB available "
+        f"(under the {LLM_MIN_AVAILABLE_BYTES / 1024**3:.0f} GB LLM guard), "
+        "so the LLM judge was skipped and heuristic scores were used. "
+        "Set analysis_mode=llm to force it."
+    )
+
+
 def score_candidates(
     candidates: list[Candidate],
     transcript: Transcript,
@@ -274,12 +310,18 @@ def score_candidates(
     provider: LLMProvider | None = None,
     progress: ProgressCallback | None = None,
     cancel: threading.Event | None = None,
+    available_bytes: int | None = None,
 ) -> list[Clip]:
     """Score candidates into :class:`Clip` objects, optionally via the LLM judge.
 
     The judge sees only the top ``_LLM_TOP_K`` heuristic candidates. Mode
-    ``auto`` falls back to heuristic scoring when the endpoint is unreachable;
-    mode ``llm`` raises :class:`AnalysisError` instead.
+    ``auto`` falls back to heuristic scoring when the endpoint is unreachable
+    and when the host is short on memory (below
+    :data:`LLM_MIN_AVAILABLE_BYTES` of ``MemAvailable``); mode ``llm`` raises
+    :class:`AnalysisError` instead of falling back.
+
+    ``available_bytes`` overrides the ``/proc/meminfo`` probe (tests only);
+    ``None`` means "probe the host".
     """
     if cancel is not None and cancel.is_set():
         raise AnalysisError("Analysis cancelled.")
@@ -288,7 +330,11 @@ def score_candidates(
 
     judgments: dict[str, LLMClipJudgment] | None = None
     mode = cfg.analysis_mode
-    if mode != "heuristic":
+    skip_reason = llm_skip_reason(cfg, available_bytes)
+    if skip_reason is not None:
+        log.info("Skipping LLM judge in auto mode: %s", skip_reason)
+        _report(progress, 0.7, skip_reason)
+    if mode != "heuristic" and skip_reason is None:
         active = provider or build_provider(settings)
         if active is None:
             if mode == "llm":
@@ -346,6 +392,7 @@ def analyze(
     settings: Settings | None = None,
     progress: ProgressCallback | None = None,
     cancel: threading.Event | None = None,
+    available_bytes: int | None = None,
 ) -> list[Clip]:
     """Run the full highlight pipeline: candidates -> score -> select."""
     settings = settings or Settings()
@@ -361,6 +408,7 @@ def analyze(
         settings=settings,
         progress=progress,
         cancel=cancel,
+        available_bytes=available_bytes,
     )
     _report(progress, 0.9, "Selecting clips")
     selected = select_clips(clips, cfg)

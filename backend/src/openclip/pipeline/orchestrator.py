@@ -9,6 +9,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 from openclip.analyze import analyze as run_analyze
+from openclip.analyze.language import check_transcript_language
+from openclip.analyze.service import llm_skip_reason
 from openclip.captions.ass import build_ass
 from openclip.captions.presets import load_presets
 from openclip.core.config import Settings
@@ -75,6 +77,8 @@ class Pipeline:
         self.queue = JobQueue(self._run_guarded)
         self._rerender_locks: dict[tuple[str, str], threading.Lock] = {}
         self._rerender_locks_guard = threading.Lock()
+        # Non-fatal per-run notes (non-English source, low-memory LLM skip).
+        self.language_warning: str | None = None
         store.mark_interrupted(self.settings)
 
     def clip_rerender_lock(self, job_id: str, clip_id: str) -> threading.Lock:
@@ -254,6 +258,7 @@ class Pipeline:
 
         progress = self._make_progress(job)
         self._stage_box = {"stage": Stage.INGEST}
+        self.language_warning = None
         media = self._stage_ingest(job, workdir, progress, cancel)
         transcript = self._stage_transcribe(job, media, workdir, progress, cancel)
         clips = self._stage_analyze(job, transcript, media, workdir, progress, cancel)
@@ -315,8 +320,12 @@ class Pipeline:
             for c in job.clips
         ]
         (workdir / "results.json").write_text(json.dumps(results, indent=2))
+        notes: list[str] = []
         if clip_errors:
-            job.message = "Clip failures: " + "; ".join(clip_errors)
+            notes.append("Clip failures: " + "; ".join(clip_errors))
+        if self.language_warning:
+            notes.append(self.language_warning)
+        job.message = " ".join(notes) if notes else None
         self._finish(job, JobStatus.COMPLETED, None)
 
     # -- stages ---------------------------------------------------------------
@@ -356,7 +365,12 @@ class Pipeline:
             cancel=cancel,
         )
         transcript_file.write_text(json.dumps({"transcript": transcript.model_dump(mode="json")}))
-        self._advance(job, Stage.TRANSCRIBE, 1.0, "Transcription complete")
+        # Non-blocking language safeguard: the run continues, but the job message
+        # explains why the result may be wrong (English-only v0.1 profiles).
+        warning = check_transcript_language(transcript).warning
+        self.language_warning = warning
+        message = f"Transcription complete. {warning}" if warning else "Transcription complete"
+        self._advance(job, Stage.TRANSCRIBE, 1.0, message)
         return transcript
 
     def _stage_analyze(self, job, transcript, media, workdir, progress, cancel):
@@ -407,6 +421,11 @@ class Pipeline:
         )
         clips_file.write_text(json.dumps([c.model_dump(mode="json") for c in clips]))
         self._advance(job, Stage.SELECT, 1.0, f"Selected {len(clips)} clips")
+        # Keep the resource-guard reason visible after the stage message resets.
+        skip_reason = llm_skip_reason(job.options)
+        if skip_reason is not None:
+            job.message = skip_reason
+            self._save(job)
         return clips
 
     # -- progress plumbing ----------------------------------------------------

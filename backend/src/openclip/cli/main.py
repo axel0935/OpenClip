@@ -11,6 +11,7 @@ import uvicorn
 
 from openclip import __version__
 from openclip.analyze import analyze as run_analyze
+from openclip.analyze.language import LANGUAGE_WARNING, check_transcript_language
 from openclip.api.app import create_app
 from openclip.core.config import Settings
 from openclip.core.errors import OpenClipError
@@ -202,6 +203,9 @@ def transcribe(
 
     word_count = sum(len(segment.words) for segment in transcript.segments)
     rtf = elapsed / transcript.duration if transcript.duration > 0 else 0.0
+    warning = check_transcript_language(transcript).warning
+    if warning is not None:
+        typer.echo(f"warning: {warning}", err=True)
     typer.echo(f"language: {transcript.language}")
     typer.echo(f"duration: {transcript.duration:.2f}s")
     typer.echo(f"segments: {len(transcript.segments)}")
@@ -456,6 +460,8 @@ def run(
         shutil.copy2(results, out / "results.json")
 
     elapsed = time.monotonic() - started
+    if final.message and LANGUAGE_WARNING in final.message:
+        typer.echo(f"warning: {LANGUAGE_WARNING}", err=True)
     typer.echo(f"status: completed in {elapsed:.1f}s")
     typer.echo(f"{'#':<3} {'score':>6} {'dur':>5}  title")
     for rank, clip in enumerate(final.clips, 1):

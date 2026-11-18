@@ -54,7 +54,15 @@ The optional LLM judge rescores only the top 12 heuristic candidates, sent in ba
 
 Model selection: `llm_model`/`OPENCLIP_LLM_MODEL` wins; otherwise `build_provider` probes the Ollama default (`http://127.0.0.1:11434/v1`, or `OPENCLIP_LLM_BASE_URL`) and picks the best installed entry of `RECOMMENDED_LLM_MODELS` (`gemma2:2b` first — see the benchmark table in `docs/PROGRESS.md`). `openclip models llm-list` shows installed vs recommended; `openclip doctor` names the auto-selected model.
 
+### Resource guard (auto mode)
+
+`analysis_mode=auto` checks `/proc/meminfo` `MemAvailable` before the judge starts (`core/memory.py`, no new dependency) and skips the LLM below **3 GB**, using heuristic scores and writing the reason into the job message. A 70 s job that took 10 extra minutes on the reference machine because RAM was nearly exhausted is the case this prevents. The probe fails soft: on non-Linux, an unreadable file or a missing/malformed line the value is unknown and auto mode behaves as before. An explicit `analysis_mode=llm` always forces the judge, and a successful run with the `llm` setting is never downgraded silently — only the entry point is gated.
+
 Prompt and output hygiene (`analyze/prompts.py`, `analyze/service.py`): the system prompt carries the rubric, strict output rules and two synthetic good/bad examples. Responses are sanitized per clip (fields clamped, unusable entries dropped) and then repaired against the rules: titles ≤ 60 chars must share content words with the clip text, hooks must be verbatim lines (else replaced by the best heuristic sentence), hashtags are 3–5 lowercase topic tags. A small English profanity list masks words as `f***` in titles/hooks and drops them from hashtags — applied to LLM *and* heuristic metadata, while clip text and captions stay untouched.
+
+## Highlights and language
+
+v0.1 targets English-language media. The `fast` (`base.en`) and `balanced` (`small.en`) profiles are English-only Whisper models, so a non-English source would otherwise produce confident garbage with no warning. `analyze/language.py` inspects the finished transcript only — no extra model, no extra pass, no download — and flags four independent signals: non-Latin script share, non-ASCII letter share, a dominant foreign function-word cluster (es/fr/de/it/pt/nl), and an unknown-word share with almost no English stopwords. Thresholds require ≥40 words except the foreign-cluster check, which may fire on ≥12 words with ≥3 cluster hits. A flagged transcript keeps the job running and attaches `LANGUAGE_WARNING` to the job message (`openclip run`/`transcribe` print it on stderr) so the user knows the result may be wrong. The check never raises.
 
 ## Reframing
 
