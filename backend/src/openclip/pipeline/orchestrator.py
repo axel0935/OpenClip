@@ -404,6 +404,9 @@ class Pipeline:
             settings=self.settings,
             progress=_sub(progress, STAGE_WEIGHTS[Stage.INGEST], STAGE_WEIGHTS[Stage.TRANSCRIBE]),
             cancel=cancel,
+            # No speech means no clips: fail here with the `no_speech` code the
+            # UI maps to a dedicated message, instead of a generic analysis error.
+            strict=True,
         )
         transcript_file.write_text(json.dumps({"transcript": transcript.model_dump(mode="json")}))
         # Non-blocking language safeguard: the run continues, but the job message

@@ -277,6 +277,28 @@ def test_stage_failures_persist_a_coded_terminal_state(
     assert final.error is not None and final.error.code == expected_code
 
 
+def test_empty_transcript_fails_with_no_speech(tmp_path: Path, monkeypatch) -> None:
+    """Silent audio is a product-level error, not a generic analysis crash."""
+    store.reset_engine()
+    settings = _settings(tmp_path)
+    pipe = Pipeline(settings)
+    job = _job(settings)
+    _patch_stages(monkeypatch)
+    import openclip.pipeline.orchestrator as orch
+
+    def strict_transcribe(*a, **k):
+        # Mirror the real contract: strict mode rejects an empty transcript.
+        assert k.get("strict") is True, "the pipeline must ask for strict mode"
+        raise TranscriptionFailure("no_speech", "No speech was detected in the audio.")
+
+    monkeypatch.setattr(orch, "run_transcribe", strict_transcribe)
+    with pytest.raises(Exception):
+        pipe.execute(job)
+    final = pipe.job(job.id)
+    assert final is not None and final.error is not None
+    assert final.error.code == "no_speech"
+
+
 def test_missing_asr_extra_adds_an_install_hint(tmp_path: Path, monkeypatch) -> None:
     store.reset_engine()
     settings = _settings(tmp_path)
