@@ -610,6 +610,25 @@ def test_patch_concurrent_requests_conflict(seeded_client) -> None:
         lock.release()
 
 
+def test_patch_style_change_works_when_the_source_is_shorter_than_min(seeded_client) -> None:
+    """A sub-minimum source yields a short clip; its style must still be editable."""
+    c, _, settings, job = seeded_client
+    # Report a source shorter than min_clip_seconds, as a real tiny input would.
+    short = _media(duration=6.0)
+    workdir = store.job_dir(settings, job.id)
+    (workdir / "media.json").write_text(short.model_dump_json())
+    job.media = short
+    store.save_job(settings, job)
+    clip_id = job.clips[0].id
+
+    resp = c.patch(f"/api/jobs/{job.id}/clips/{clip_id}", json={"caption_style_id": "bold-impact"})
+    assert resp.status_code == 200, resp.text
+
+    # Bounds that are genuinely too long are still rejected.
+    too_long = c.patch(f"/api/jobs/{job.id}/clips/{clip_id}", json={"start": 0.0, "end": 200.0})
+    assert too_long.status_code == 422 and too_long.json()["code"] == "invalid_duration"
+
+
 def test_patch_failure_keeps_previous_artifacts(seeded_client, monkeypatch) -> None:
     c, _, settings, job = seeded_client
     import openclip.pipeline.orchestrator as orch

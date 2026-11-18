@@ -456,7 +456,19 @@ def create_app(
             )
         length = new_end - new_start
         opts = job.options
-        if length < opts.min_clip_seconds * 0.9 or length > opts.max_clip_seconds * 1.1:
+        source_duration = job.media.duration if job.media is not None else None
+        # A source shorter than min_clip_seconds legitimately yields a shorter
+        # clip (the pipeline flags it), so its own length is allowed there.
+        short_source = source_duration is not None and source_duration < opts.min_clip_seconds
+        bounds_changed = body.start is not None or body.end is not None
+        if bounds_changed and not short_source and length < opts.min_clip_seconds * 0.9:
+            return _error(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "invalid_duration",
+                f"Clip length must be within {opts.min_clip_seconds:g}-"
+                f"{opts.max_clip_seconds:g} seconds (got {length:.1f}).",
+            )
+        if bounds_changed and length > opts.max_clip_seconds * 1.1:
             return _error(
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
                 "invalid_duration",
